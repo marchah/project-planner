@@ -1,0 +1,27 @@
+# deps / build
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# runtime data (SQLite lives here by default)
+*.db
+*.db-*
+data/
+
+# env / secrets (public repo — never commit)
+.env
+.env.*
+!.env.example
+
+# test / coverage
+coverage/
+
+# editor / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+
+# NOTE: generated-but-COMMITTED artifacts are intentionally NOT ignored
+#   packages/contract/schema.graphql   (emitted from Pothos; drift-checked)
+#   packages/web/src/graphql-env.d.ts   (gql.tada introspection; drift-checked)

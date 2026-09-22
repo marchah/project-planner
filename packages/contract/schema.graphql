@@ -1,0 +1,85 @@
+type ConflictError {
+  message: String!
+  status: Int!
+}
+
+"""
+A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `date-time` format outlined in section 5.6 of the RFC 3339 profile of the ISO 8601 standard for representation of dates and times using the Gregorian calendar.
+"""
+scalar DateTime
+
+type Idea {
+  body: String!
+  createdAt: DateTime!
+  id: ID!
+  source: IdeaSource!
+  sourceUrl: String
+  status: IdeaStatus!
+  title: String!
+  updatedAt: DateTime!
+}
+
+enum IdeaSource {
+  API
+  SLACK
+  WEB
+}
+
+enum IdeaStatus {
+  BUILDING
+  CAPTURED
+  DONE
+  PLANNED
+  RESEARCHING
+  SHELVED
+}
+
+type Mutation {
+  captureIdea(text: String!, title: String): MutationCaptureIdeaResult!
+  deleteIdea(id: ID!): MutationDeleteIdeaResult!
+  updateIdea(body: String, id: ID!, status: IdeaStatus, title: String): MutationUpdateIdeaResult!
+}
+
+union MutationCaptureIdeaResult = MutationCaptureIdeaSuccess | ServerError | ValidationError
+
+type MutationCaptureIdeaSuccess {
+  data: Idea!
+}
+
+union MutationDeleteIdeaResult = MutationDeleteIdeaSuccess | NotFoundError | ServerError
+
+type MutationDeleteIdeaSuccess {
+  data: Idea!
+}
+
+union MutationUpdateIdeaResult = MutationUpdateIdeaSuccess | NotFoundError | ServerError | ValidationError
+
+type MutationUpdateIdeaSuccess {
+  data: Idea!
+}
+
+type NotFoundError {
+  message: String!
+  status: Int!
+}
+
+type Query {
+  idea(id: ID!): QueryIdeaResult!
+  ideas: [Idea!]!
+}
+
+union QueryIdeaResult = NotFoundError | QueryIdeaSuccess | ServerError
+
+type QueryIdeaSuccess {
+  data: Idea!
+}
+
+type ServerError {
+  message: String!
+  status: Int!
+}
+
+type ValidationError {
+  message: String!
+  status: Int!
+}

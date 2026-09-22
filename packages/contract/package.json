@@ -1,0 +1,13 @@
+{
+  "name": "@app/contract",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The shared GraphQL contract (SDL) \u2014 emitted by the api, consumed (typed) by the web. The only artifact both packages touch.",
+  "exports": {
+    "./schema.graphql": "./schema.graphql"
+  },
+  "files": [
+    "schema.graphql"
+  ]
+}

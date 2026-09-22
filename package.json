@@ -1,0 +1,44 @@
+{
+  "name": "project-planner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "description": "A sticky-note board for project ideas: capture from Slack or the board; Hermes researches, plans and asks clarifying questions.",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter \"@app/*\" dev",
+    "build": "pnpm build-schema && pnpm --filter @app/web gen && pnpm --filter @app/web build && pnpm --filter @app/api build",
+    "build-schema": "pnpm --filter @app/api build-schema",
+    "gen": "pnpm build-schema && pnpm --filter @app/web gen",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm -r --if-present test",
+    "check:drift": "node scripts/check-drift.mjs",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm check:drift",
+    "db:generate": "pnpm --filter @app/api db:generate",
+    "db:migrate": "pnpm --filter @app/api db:migrate",
+    "doctor": "npx react-doctor@latest"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.2",
+    "eslint": "^10.8.0",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-boundaries": "^7.1.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.9.0",
+    "prettier": "^3.9.6",
+    "react-doctor": "^0.9.6",
+    "tsx": "^4.23.9",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.66.0"
+  }
+}
