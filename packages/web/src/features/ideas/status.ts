@@ -30,6 +30,14 @@ export function sourceLabel(source: string): string {
   return SOURCE_LABEL[source] ?? source;
 }
 
+// Built once: an Intl formatter is expensive to construct.
+const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+const TIME_FORMAT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+
 export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso));
+  return DATE_FORMAT.format(new Date(iso));
+}
+
+export function formatTime(iso: string): string {
+  return TIME_FORMAT.format(new Date(iso));
 }

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
+    "@modelcontextprotocol/sdk": "^1.31.0",
     "@pothos/core": "^4.13.1",
     "@pothos/plugin-errors": "^4.9.1",
     "@pothos/plugin-zod": "^4.3.1",

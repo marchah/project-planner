@@ -5,7 +5,7 @@ import { IdeaSource, IdeaStatus, type Idea } from './types';
 const IdeaStatusRef = builder.enumType(IdeaStatus, { name: 'IdeaStatus' });
 const IdeaSourceRef = builder.enumType(IdeaSource, { name: 'IdeaSource' });
 
-const IdeaRef = builder.objectRef<Idea>('Idea');
+export const IdeaRef = builder.objectRef<Idea>('Idea');
 IdeaRef.implement({
   fields: (t) => ({
     id: t.exposeID('id'),
@@ -69,11 +69,5 @@ builder.mutationFields((t) => ({
     errors: { types: [NotFoundError, ServiceUnavailableError] },
     args: { id: t.arg.id({ required: true }) },
     resolve: (_root, args, ctx) => ctx.services.ideaService.generateTitleForIdea(args.id),
-  }),
-  deleteIdea: t.field({
-    type: IdeaRef,
-    errors: { types: [NotFoundError] },
-    args: { id: t.arg.id({ required: true }) },
-    resolve: (_root, args, ctx) => ctx.services.ideaService.deleteIdea(args.id),
   }),
 }));

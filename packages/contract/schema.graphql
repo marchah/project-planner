@@ -12,6 +12,12 @@ type Idea {
   body: String!
   createdAt: DateTime!
   id: ID!
+  latestPlan: Plan
+  openQuestionCount: Int!
+  questions: [Question!]!
+
+  """The most recent research job for this idea."""
+  research: ResearchJob
   source: IdeaSource!
   sourceUrl: String
   status: IdeaStatus!
@@ -38,6 +44,7 @@ type Mutation {
   captureIdea(text: String!, title: String): MutationCaptureIdeaResult!
   deleteIdea(id: ID!): MutationDeleteIdeaResult!
   generateIdeaTitle(id: ID!): MutationGenerateIdeaTitleResult!
+  startResearch(ideaId: ID!): MutationStartResearchResult!
   updateIdea(body: String, id: ID!, status: IdeaStatus, title: String): MutationUpdateIdeaResult!
 }
 
@@ -59,6 +66,12 @@ type MutationGenerateIdeaTitleSuccess {
   data: Idea!
 }
 
+union MutationStartResearchResult = MutationStartResearchSuccess | NotFoundError | ServerError | ServiceUnavailableError
+
+type MutationStartResearchSuccess {
+  data: Idea!
+}
+
 union MutationUpdateIdeaResult = MutationUpdateIdeaSuccess | NotFoundError | ServerError | ValidationError
 
 type MutationUpdateIdeaSuccess {
@@ -70,15 +83,77 @@ type NotFoundError {
   status: Int!
 }
 
+type Plan {
+  createdAt: DateTime!
+  id: ID!
+  planMd: String!
+  researchMd: String!
+  shelveReason: String
+  sources: [PlanSource!]!
+  stack: [StackItem!]!
+  suggestion: PlanSuggestion!
+  summary: String!
+  version: Int!
+}
+
+type PlanSource {
+  firstParty: Boolean!
+  title: String!
+  url: String!
+}
+
+enum PlanSuggestion {
+  PLANNED
+  SHELVED
+}
+
 type Query {
   idea(id: ID!): QueryIdeaResult!
   ideas: [Idea!]!
+  researchEnabled: Boolean!
 }
 
 union QueryIdeaResult = NotFoundError | QueryIdeaSuccess | ServerError
 
 type QueryIdeaSuccess {
   data: Idea!
+}
+
+type Question {
+  answer: String
+  createdAt: DateTime!
+  defaultAnswer: String!
+  id: ID!
+  number: Int!
+  status: QuestionStatus!
+  text: String!
+  topic: String!
+  why: String!
+}
+
+enum QuestionStatus {
+  ANSWERED
+  OPEN
+  RESOLVED
+  SUPERSEDED
+}
+
+type ResearchJob {
+  attempt: Int!
+  createdAt: DateTime!
+  error: String
+  finishedAt: DateTime
+  id: ID!
+  notBefore: DateTime!
+  startedAt: DateTime
+  status: ResearchJobStatus!
+}
+
+enum ResearchJobStatus {
+  FAILED
+  QUEUED
+  RUNNING
+  SUCCEEDED
 }
 
 type ServerError {
@@ -89,6 +164,12 @@ type ServerError {
 type ServiceUnavailableError {
   message: String!
   status: Int!
+}
+
+type StackItem {
+  name: String!
+  role: String!
+  version: String
 }
 
 type ValidationError {

@@ -16,7 +16,7 @@ export function getServices(): Services {
 
   const thirdParty = getThirdPartyServices();
   const entities = getEntitiesServices({ db, thirdParty });
-  const features = getFeaturesServices({ entities });
+  const features = getFeaturesServices({ entities, thirdParty });
 
   cached = { ...entities, ...features };
   return cached;

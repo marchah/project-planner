@@ -6,7 +6,9 @@ import { logException, logInfo, logWarning } from './common/logger';
 import { settings } from './common/settings';
 import { createContext } from './context';
 import { runMigrations } from './db/migrate';
+import { handleMcpRequest } from './mcp';
 import { handleRestRequest } from './rest';
+import { startResearchWorker } from './worker';
 import { schema } from './schema';
 
 // The built SPA. In Docker this is overridden to the copied build dir via WEB_DIR.
@@ -24,6 +26,10 @@ async function main(): Promise<void> {
     const url = req.url ?? '/';
     if (url === '/graphql' || url.startsWith('/graphql?')) {
       void yoga(req, res);
+      return;
+    }
+    if (url === '/mcp' || url === '/mcp/' || url.startsWith('/mcp?')) {
+      void handleMcpRequest(req, res);
       return;
     }
     if (url === '/api' || url.startsWith('/api/')) {
@@ -50,9 +56,11 @@ async function main(): Promise<void> {
     });
   }
 
+  startResearchWorker();
+
   server.listen(settings.PORT, () => {
     logInfo(
-      `listening on http://localhost:${String(settings.PORT)} (GraphQL at /graphql, REST at /api)`,
+      `listening on http://localhost:${String(settings.PORT)} (GraphQL at /graphql, REST at /api, MCP at /mcp)`,
       {
         tag: 'SERVER',
       },

@@ -56,15 +56,15 @@ describe('titleModelAdapter', () => {
   });
 
   it('asks the configured model and returns the cleaned title', async () => {
-    const fetchMock = stubCompletion(completion("'Left For Dead 2 Style Online Multiplayer Game'"));
+    const fetchMock = stubCompletion(completion("'Board Game Night Scheduler'"));
     const adapter = titleModelAdapterFactory({ config });
-    await expect(adapter.generateIdeaTitle('left for dead 2 style game')).resolves.toBe(
-      'Left For Dead 2 Style Online Multiplayer Game',
+    await expect(adapter.generateIdeaTitle('an app to schedule board game nights')).resolves.toBe(
+      'Board Game Night Scheduler',
     );
     const { url, init, headers, body } = sentRequest(fetchMock);
     expect(url).toBe('http://model:1234/v1/chat/completions');
     expect(body.model).toBe('test-model');
-    expect(body.messages.at(-1)?.content).toBe('left for dead 2 style game');
+    expect(body.messages.at(-1)?.content).toBe('an app to schedule board game nights');
     expect(headers.authorization).toBeUndefined();
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });

@@ -46,7 +46,7 @@ function send(res: ServerResponse, { status, body }: RestResponse): void {
   res.end(JSON.stringify(body));
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+export async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   if (req.method === 'GET' || req.method === 'HEAD') return undefined;
   const chunks: Buffer[] = [];
   let size = 0;
