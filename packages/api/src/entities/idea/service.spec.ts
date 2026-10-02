@@ -41,7 +41,15 @@ describe('deriveIdeaTitle', () => {
     expect(deriveIdeaTitle('\n\n  Grocery watcher  \nmore detail')).toBe('Grocery watcher');
   });
 
-  it('truncates long lines with an ellipsis', () => {
+  it('truncates a long line at a word boundary', () => {
+    const text =
+      "left for dead 2 style game online multiplayer using Vercel and Supabase with different 'room' you can enter";
+    expect(deriveIdeaTitle(text)).toBe(
+      'left for dead 2 style game online multiplayer using Vercel and Supabase with…',
+    );
+  });
+
+  it('cuts a single huge word where it falls', () => {
     const title = deriveIdeaTitle('x'.repeat(200));
     expect(title).toHaveLength(80);
     expect(title.endsWith('…')).toBe(true);

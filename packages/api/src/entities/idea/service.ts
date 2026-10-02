@@ -10,9 +10,12 @@ export function deriveIdeaTitle(text: string): string {
       .split('\n')
       .find((line) => line.trim().length > 0)
       ?.trim() ?? '';
-  return firstLine.length > TITLE_MAX_LENGTH
-    ? `${firstLine.slice(0, TITLE_MAX_LENGTH - 1).trimEnd()}…`
-    : firstLine;
+  if (firstLine.length <= TITLE_MAX_LENGTH) return firstLine;
+  const cut = firstLine.slice(0, TITLE_MAX_LENGTH - 1);
+  const lastSpace = cut.lastIndexOf(' ');
+  // Only break at a space that keeps most of the line; one huge word is cut where it falls.
+  const atWord = lastSpace >= TITLE_MAX_LENGTH / 2 ? cut.slice(0, lastSpace) : cut;
+  return `${atWord.trimEnd()}…`;
 }
 
 export function ideaServiceFactory({

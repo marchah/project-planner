@@ -34,8 +34,26 @@ export function formatDate(iso: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(iso));
 }
 
-/** The body minus a leading line that merely repeats the title (the usual shape of a capture). */
-export function noteExcerpt(title: string, body: string): string {
-  const [first = '', ...rest] = body.split('\n');
-  return first.trim() === title.trim() ? rest.join('\n').trim() : body;
+export interface NoteText {
+  /** Shown bold: the title, or the part of the first line it was cut from. */
+  lead: string;
+  /** The rest of that first line, when the title was truncated from it. */
+  continuation: string;
+  /** Whatever the note shows after the first line. */
+  rest: string;
+}
+
+/** Splits a note's text so nothing the title already shows is repeated: a first line equal to the
+ * title is dropped, and a title truncated from the first line reads straight into the remainder. */
+export function noteText(title: string, body: string): NoteText {
+  const [first = '', ...others] = body.split('\n');
+  const line = first.trim();
+  const shown = title.trim();
+  const rest = others.join('\n').trim();
+  if (line === shown) return { lead: shown, continuation: '', rest };
+  const prefix = shown.endsWith('…') ? shown.slice(0, -1).trimEnd() : '';
+  if (prefix && line.startsWith(prefix)) {
+    return { lead: prefix, continuation: line.slice(prefix.length).trim(), rest };
+  }
+  return { lead: shown, continuation: '', rest: body.trim() };
 }

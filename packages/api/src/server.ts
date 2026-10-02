@@ -1,7 +1,8 @@
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createYoga } from 'graphql-yoga';
 import sirv from 'sirv';
-import { logException, logInfo } from './common/logger';
+import { logException, logInfo, logWarning } from './common/logger';
 import { settings } from './common/settings';
 import { createContext } from './context';
 import { runMigrations } from './db/migrate';
@@ -12,7 +13,9 @@ import { schema } from './schema';
 const WEB_DIR = settings.WEB_DIR ?? new URL('../../web/dist', import.meta.url).pathname;
 
 const yoga = createYoga({ schema, context: createContext, graphqlEndpoint: '/graphql' });
-const serveStatic = sirv(WEB_DIR, { single: true, dev: false });
+// In `pnpm dev` Vite serves the SPA and nothing may be built yet; sirv would crash scanning a
+// missing directory, so serve it only when it exists.
+const serveStatic = existsSync(WEB_DIR) ? sirv(WEB_DIR, { single: true, dev: false }) : null;
 
 async function main(): Promise<void> {
   await runMigrations();
@@ -33,11 +36,19 @@ async function main(): Promise<void> {
       res.end('{"ok":true}');
       return;
     }
-    serveStatic(req, res, () => {
+    const notFound = () => {
       res.statusCode = 404;
       res.end('Not found');
-    });
+    };
+    if (serveStatic) serveStatic(req, res, notFound);
+    else notFound();
   });
+
+  if (!serveStatic) {
+    logWarning(`no built SPA at ${WEB_DIR}; serving the API only (use the Vite dev server)`, {
+      tag: 'SERVER',
+    });
+  }
 
   server.listen(settings.PORT, () => {
     logInfo(
