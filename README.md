@@ -5,7 +5,8 @@ have Hermes research it, write a plan and ask a few clarifying questions you can
 you're ready, and re-check the plan weekly. See [docs/SPEC.md](./docs/SPEC.md) for the design and
 build order.
 
-**Today:** the board, capture from the board, Slack or REST, edit, status, delete. Each new
+**Today:** the board, capture from the board, Slack or REST, edit, status, delete, and research: a
+button on each note has Hermes research the idea and write a plan with clarifying questions. Each new
 idea gets a short title written by a model; research and questions come next.
 
 Meant for a private network: there is no authentication. The repo holds no environment-specific
@@ -35,6 +36,11 @@ curl http://localhost:4000/api/ideas/<id>
 curl http://localhost:4000/healthz
 ```
 
+## MCP
+
+`/mcp` is a stateless MCP server (streamable HTTP) with two read-only tools for an agent discussing
+an idea: `list_ideas` and `get_idea` (the idea, its current plan, questions and research state).
+
 The title model names the idea from `text` unless `title` is given; if the model is unreachable the
 idea is still saved, with `"title": null`, and can be titled later from the board. `source` is
 `SLACK` or `API` (default); `sourceUrl` can carry the Slack permalink. Errors are JSON with a 4xx
@@ -45,14 +51,20 @@ status.
 
 ## Configuration
 
-| Variable                 | Default              | Purpose                                                                                                                             |
-| ------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `TITLE_MODEL_BASE_URL`   | unset                | OpenAI-compatible endpoint (`…/v1`) that titles new ideas: llama.cpp, LM Studio, Ollama or a hosted API. Unset: ideas stay untitled |
-| `TITLE_MODEL`            | unset                | Model name, for servers that need one (llama.cpp ignores it)                                                                        |
-| `TITLE_MODEL_API_KEY`    | unset                | Sent as a bearer token, for servers that need one                                                                                   |
-| `TITLE_MODEL_TIMEOUT_MS` | `10000`              | How long capture waits for a title before saving the idea untitled                                                                  |
-| `PUBLIC_URL`             | unset                | Base of the links the REST API returns; unset uses the caller's `Host`                                                              |
-| `DATABASE_URL`           | `file:./data/app.db` | SQLite (libsql) location                                                                                                            |
+| Variable                  | Default              | Purpose                                                                                                                             |
+| ------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `TITLE_MODEL_BASE_URL`    | unset                | OpenAI-compatible endpoint (`…/v1`) that titles new ideas: llama.cpp, LM Studio, Ollama or a hosted API. Unset: ideas stay untitled |
+| `TITLE_MODEL`             | unset                | Model name, for servers that need one (llama.cpp ignores it)                                                                        |
+| `TITLE_MODEL_API_KEY`     | unset                | Sent as a bearer token, for servers that need one                                                                                   |
+| `TITLE_MODEL_TIMEOUT_MS`  | `10000`              | How long capture waits for a title before saving the idea untitled                                                                  |
+| `HERMES_API_URL`          | unset                | Hermes Agent's API (`…:8642`), which runs research. Unset: research is off                                                          |
+| `HERMES_API_KEY`          | unset                | Hermes' `API_SERVER_KEY`                                                                                                            |
+| `HERMES_PROVIDER`         | unset                | Model provider for research runs, e.g. `openai-codex`; unset uses Hermes' default                                                   |
+| `RESEARCH_ON_CAPTURE`     | `false`              | `true` researches new ideas automatically instead of waiting for the button                                                         |
+| `RESEARCH_CONTEXT`        | unset                | Free text about you, added to every research prompt                                                                                 |
+| `RESEARCH_RUN_TIMEOUT_MS` | `900000`             | A research run is stopped and retried after this long                                                                               |
+| `PUBLIC_URL`              | unset                | Base of the links the REST API returns; unset uses the caller's `Host`                                                              |
+| `DATABASE_URL`            | `file:./data/app.db` | SQLite (libsql) location                                                                                                            |
 
 A local model titles an idea in well under a second, so capture waits for it. In Docker, use full
 hostnames or IPs: the embedded resolver may not resolve single-label names.

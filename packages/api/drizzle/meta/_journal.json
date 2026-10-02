@@ -15,6 +15,13 @@
       "when": 1790951994287,
       "tag": "0001_nullable_idea_title",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790966967063,
+      "tag": "0002_research_plans_questions",
+      "breakpoints": true
     }
   ]
 }

@@ -87,6 +87,7 @@ export default tseslint.config(
           pattern: 'packages/api/src/{entities,features}/*/schema.pothos.ts',
         },
         { category: 'route', pattern: 'packages/api/src/{entities,features}/*/routes.ts' },
+        { category: 'route', pattern: 'packages/api/src/{entities,features}/*/mcp.ts' },
         { category: 'service', pattern: 'packages/api/src/{entities,features}/*/service.ts' },
         {
           category: 'repository',
@@ -123,7 +124,7 @@ export default tseslint.config(
               from: { file: { categories: 'route' } },
               disallow: { to: { file: { categories: { anyOf: ['db', 'repository'] } } } },
               message:
-                'Layer violation: REST routes reach data via the injected services — never import db or repository.',
+                'Layer violation: REST routes and MCP tools reach data via the injected services — never import db or repository.',
             },
             {
               from: { file: { categories: 'service' } },

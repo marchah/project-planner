@@ -5,7 +5,7 @@ import { IdeaSource, IdeaStatus, type Idea } from './types';
 const IdeaStatusRef = builder.enumType(IdeaStatus, { name: 'IdeaStatus' });
 const IdeaSourceRef = builder.enumType(IdeaSource, { name: 'IdeaSource' });
 
-const IdeaRef = builder.objectRef<Idea>('Idea');
+export const IdeaRef = builder.objectRef<Idea>('Idea');
 IdeaRef.implement({
   fields: (t) => ({
     id: t.exposeID('id'),

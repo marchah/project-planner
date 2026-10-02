@@ -65,12 +65,14 @@ Each backend slice is a folder under `packages/api/src/{entities,features}/<slic
 | `<e>/service.ts`       | business logic                                                           | repository **port types**, other services' port types, `common` | `db/` / `db/schema`, a resolver, Pothos |
 | `<e>/schema.pothos.ts` | GraphQL types + resolvers                                                | `builder`, own `service`/`types`, `common`, other modules' refs | `db/`, a repository                     |
 | `<e>/routes.ts`        | REST handlers for machine callers (`RestRoute[]` from `common/rest.ts`)  | own `types`, `common`, `zod`                                    | `db/`, a repository, `node:http`        |
+| `<e>/mcp.ts`           | MCP tools registered on a server passed in by `src/mcp.ts`               | own `types`, `common`, `zod`, the MCP SDK                       | `db/`, a repository, `node:http`        |
 | `<e>/*.spec.ts`        | Vitest unit tests                                                        | anything                                                        | —                                       |
 
 Backbone: `builder.ts` (the one Pothos builder), `entities/index.ts` + `features/index.ts` (each
 module wires its own slices), `services.ts` (composition root — unions the modules), `context.ts`
 (request services + DataLoaders), `schema.ts` (assembles slices), `server.ts` (entrypoint),
-`rest.ts` (adapts `RestRoute`s to `node:http` and wires each slice's routes), `db/{schema,client,migrate}.ts`,
+`rest.ts` (adapts `RestRoute`s to `node:http` and wires each slice's routes), `mcp.ts` (the stateless
+`/mcp` endpoint), `worker.ts` (advances the research queue on an interval), `db/{schema,client,migrate}.ts`,
 `common/{errors,logger,rest,settings,types}.ts`.
 
 REST routes are transport-agnostic on purpose: a slice's `routes.ts` receives `{ params, body, origin }`
@@ -82,7 +84,7 @@ handler; `common/rest.ts` maps a `ZodError` to 400 and a typed error to its `sta
 **resolver → service → repository → db.** Never skip or invert a layer:
 
 - A **resolver never imports `db/` or a repository** — it reaches data only via `ctx.services`.
-- A **REST route never imports `db/` or a repository** — it receives the services it uses.
+- A **REST route or MCP tool never imports `db/` or a repository** — it receives the services it uses.
 - A **service never imports `db/schema` or a resolver** — it depends on repository **port types**.
 - A **repository never imports a service or resolver** — it is the bottom data layer.
 - The **web package never imports the api package** (it depends only on `@app/contract`).

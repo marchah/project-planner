@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useQuery } from 'urql';
 import { graphql } from '../../graphql';
 import { cn } from '../../lib/utils';
+import { isResearchActive } from './ResearchSection';
 import { ARCHIVED_STATUSES, STATUS_META, formatDate } from './status';
+import { usePolling } from './usePolling';
 
 export const BoardQuery = graphql(`
   query Board {
@@ -12,6 +14,12 @@ export const BoardQuery = graphql(`
       body
       status
       createdAt
+      openQuestionCount
+      research {
+        id
+        status
+        error
+      }
     }
   }
 `);
@@ -24,8 +32,13 @@ const BOARD_CONTEXT = { additionalTypenames: ['Idea'] };
 const TILTS = ['-rotate-1', 'rotate-1', 'rotate-0', '-rotate-2', 'rotate-2'];
 
 export function Board({ onOpen }: { onOpen: (id: string) => void }) {
-  const [{ data, fetching, error }] = useQuery({ query: BoardQuery, context: BOARD_CONTEXT });
+  const [{ data, fetching, error }, reexecute] = useQuery({
+    query: BoardQuery,
+    context: BOARD_CONTEXT,
+  });
   const [showArchived, setShowArchived] = useState(false);
+  const refresh = useCallback(() => reexecute({ requestPolicy: 'network-only' }), [reexecute]);
+  usePolling(data?.ideas.some((idea) => isResearchActive(idea.research)) ?? false, refresh);
 
   if (fetching && !data) return <p className="text-muted-foreground">Loading ideas…</p>;
   if (error) return <p className="text-destructive">Failed to load ideas: {error.message}</p>;
@@ -66,7 +79,7 @@ export function Board({ onOpen }: { onOpen: (id: string) => void }) {
                   type="button"
                   onClick={() => onOpen(idea.id)}
                   className={cn(
-                    'flex aspect-square w-full flex-col p-3 text-left text-stone-900 shadow-md transition hover:rotate-0 hover:scale-[1.03] hover:shadow-lg focus-visible:rotate-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-4',
+                    'relative flex aspect-square w-full flex-col overflow-hidden p-3 text-left text-stone-900 shadow-md transition hover:rotate-0 hover:scale-[1.03] hover:shadow-lg focus-visible:rotate-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:p-4',
                     meta.note,
                     TILTS[index % TILTS.length],
                   )}
@@ -85,11 +98,35 @@ export function Board({ onOpen }: { onOpen: (id: string) => void }) {
                     {idea.body}
                   </span>
                   <span className="mt-auto flex items-center justify-between pt-2 text-xs text-stone-600">
-                    <span className={cn('rounded px-1.5 py-0.5 font-medium', meta.chip)}>
-                      {meta.label}
+                    <span className="flex items-center gap-1">
+                      <span className={cn('rounded px-1.5 py-0.5 font-medium', meta.chip)}>
+                        {meta.label}
+                      </span>
+                      {isResearchActive(idea.research) ? (
+                        <span
+                          className="size-2 animate-pulse rounded-full bg-sky-600"
+                          title="Researching"
+                          aria-label="Researching"
+                        />
+                      ) : null}
+                      {idea.openQuestionCount > 0 ? (
+                        <span
+                          className="rounded bg-white/70 px-1.5 py-0.5 font-medium"
+                          title={`${String(idea.openQuestionCount)} open questions`}
+                        >
+                          {idea.openQuestionCount} ?
+                        </span>
+                      ) : null}
                     </span>
                     <span>{formatDate(idea.createdAt)}</span>
                   </span>
+                  {idea.research?.status === 'FAILED' ? (
+                    <span
+                      className="absolute right-0 top-0 size-0 border-l-[1.25rem] border-t-[1.25rem] border-l-transparent border-t-red-600"
+                      title={`Research failed: ${idea.research.error ?? 'unknown error'}`}
+                      aria-label="Research failed"
+                    />
+                  ) : null}
                 </button>
               </li>
             );

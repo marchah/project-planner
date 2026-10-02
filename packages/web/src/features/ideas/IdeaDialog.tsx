@@ -1,35 +1,46 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from 'urql';
 import { Button } from '../../components/ui/button';
 import { graphql, type ResultOf } from '../../graphql';
 import { cn } from '../../lib/utils';
+import { IdeaResearchFragment, ResearchSection, isResearchActive } from './ResearchSection';
 import { STATUS_META, STATUS_ORDER, formatDate, sourceLabel, type IdeaStatus } from './status';
+import { usePolling } from './usePolling';
 
-const IdeaQuery = graphql(`
-  query IdeaDetail($id: ID!) {
-    idea(id: $id) {
-      __typename
-      ... on QueryIdeaSuccess {
-        data {
-          id
-          title
-          body
-          status
-          source
-          sourceUrl
-          createdAt
-          updatedAt
+const IdeaQuery = graphql(
+  `
+    query IdeaDetail($id: ID!) {
+      researchEnabled
+      idea(id: $id) {
+        __typename
+        ... on QueryIdeaSuccess {
+          data {
+            id
+            title
+            body
+            status
+            source
+            sourceUrl
+            createdAt
+            updatedAt
+            research {
+              id
+              status
+            }
+            ...IdeaResearch
+          }
+        }
+        ... on NotFoundError {
+          message
+        }
+        ... on ServerError {
+          message
         }
       }
-      ... on NotFoundError {
-        message
-      }
-      ... on ServerError {
-        message
-      }
     }
-  }
-`);
+  `,
+  [IdeaResearchFragment],
+);
 
 const UpdateIdeaMutation = graphql(`
   mutation UpdateIdea($id: ID!, $title: String, $body: String, $status: IdeaStatus) {
@@ -109,7 +120,7 @@ function failureMessage(payload: MutationPayload, fallback: string | undefined):
 
 export function IdeaDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [{ data, fetching, error }] = useQuery({ query: IdeaQuery, variables: { id } });
+  const [{ data, fetching, error }, reexecute] = useQuery({ query: IdeaQuery, variables: { id } });
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -119,6 +130,8 @@ export function IdeaDialog({ id, onClose }: { id: string; onClose: () => void })
   const result = data?.idea;
   const idea = result?.__typename === 'QueryIdeaSuccess' ? result.data : undefined;
   const loadError = error?.message ?? (result && 'message' in result ? result.message : undefined);
+  const refresh = useCallback(() => reexecute({ requestPolicy: 'network-only' }), [reexecute]);
+  usePolling(isResearchActive(idea?.research ?? null), refresh);
 
   return (
     <dialog
@@ -128,7 +141,12 @@ export function IdeaDialog({ id, onClose }: { id: string; onClose: () => void })
       className="m-auto w-[min(48rem,calc(100vw-2rem))] max-h-[calc(100vh-4rem)] rounded-xl border bg-background p-0 text-foreground shadow-2xl backdrop:bg-black/40"
     >
       {idea ? (
-        <IdeaDetail key={idea.id} idea={idea} onClose={() => dialogRef.current?.close()} />
+        <IdeaDetail
+          key={idea.id}
+          idea={idea}
+          researchEnabled={data?.researchEnabled ?? false}
+          onClose={() => dialogRef.current?.close()}
+        />
       ) : (
         <div className="flex items-start justify-between gap-4 p-6">
           <p id="idea-title" className={loadError ? 'text-destructive' : 'text-muted-foreground'}>
@@ -145,7 +163,15 @@ export function IdeaDialog({ id, onClose }: { id: string; onClose: () => void })
 
 type Idea = Extract<ResultOf<typeof IdeaQuery>['idea'], { __typename: 'QueryIdeaSuccess' }>['data'];
 
-function IdeaDetail({ idea, onClose }: { idea: Idea; onClose: () => void }) {
+function IdeaDetail({
+  idea,
+  researchEnabled,
+  onClose,
+}: {
+  idea: Idea;
+  researchEnabled: boolean;
+  onClose: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(idea.title ?? '');
   const [body, setBody] = useState(idea.body);
@@ -302,23 +328,7 @@ function IdeaDetail({ idea, onClose }: { idea: Idea; onClose: () => void }) {
           )}
         </section>
 
-        <section aria-labelledby="plan-section" className="space-y-2">
-          <h3 id="plan-section" className="font-semibold">
-            Plan
-          </h3>
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No plan yet. Research hasn&apos;t run for this idea.
-          </p>
-        </section>
-
-        <section aria-labelledby="questions-section" className="space-y-2">
-          <h3 id="questions-section" className="font-semibold">
-            Questions
-          </h3>
-          <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-            No questions yet. They arrive with the plan.
-          </p>
-        </section>
+        <ResearchSection idea={idea} enabled={researchEnabled} onMessage={setMessage} />
 
         <footer className="flex justify-end border-t pt-4">
           <Button variant="ghost" size="sm" disabled={deleting} onClick={() => void remove()}>

@@ -39,6 +39,15 @@ services:
       # Only for servers that need them (hosted APIs); llama.cpp ignores the model name.
       TITLE_MODEL: ${TITLE_MODEL:-}
       TITLE_MODEL_API_KEY: ${TITLE_MODEL_API_KEY:-}
+      # Hermes Agent's API (…:8642), which runs the research. Empty: research is off.
+      HERMES_API_URL: ${HERMES_API_URL:-}
+      HERMES_API_KEY: ${HERMES_API_KEY:-}
+      # Model provider for research runs, e.g. openai-codex. Empty: Hermes' default.
+      HERMES_PROVIDER: ${HERMES_PROVIDER:-}
+      # 'true' researches every new idea automatically; otherwise use the button on the note.
+      RESEARCH_ON_CAPTURE: ${RESEARCH_ON_CAPTURE:-false}
+      # Free text about you, added to every research prompt.
+      RESEARCH_CONTEXT: ${RESEARCH_CONTEXT:-}
     healthcheck:
       test:
         - CMD-SHELL
