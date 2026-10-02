@@ -1,4 +1,3 @@
-import type { Maybe } from '../../common/types';
 import {
   MAX_OPEN_QUESTIONS,
   type NewQuestion,
@@ -20,15 +19,17 @@ export function questionServiceFactory({
     return questionRepository.countOpenQuestionsByIdeaId(ideaId);
   }
 
-  async function replaceOpenQuestions(
+  function replaceOpenQuestions(
     ideaId: string,
     items: NewQuestion[],
-    askedInPlanId: Maybe<string>,
+    planId: string,
   ): Promise<Question[]> {
-    await questionRepository.supersedeUnansweredOpenQuestions(ideaId);
-    const stillOpen = await questionRepository.countOpenQuestionsByIdeaId(ideaId);
-    const room = Math.max(0, MAX_OPEN_QUESTIONS - stillOpen);
-    return questionRepository.createQuestions(ideaId, items.slice(0, room), askedInPlanId);
+    return questionRepository.replaceUnansweredOpenQuestions(
+      ideaId,
+      items,
+      planId,
+      MAX_OPEN_QUESTIONS,
+    );
   }
 
   return { listQuestionsForIdea, countOpenQuestionsForIdea, replaceOpenQuestions };

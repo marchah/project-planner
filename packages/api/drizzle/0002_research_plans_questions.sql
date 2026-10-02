@@ -15,6 +15,7 @@ CREATE TABLE `plans` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `plans_idea_version` ON `plans` (`idea_id`,`version`);--> statement-breakpoint
+CREATE UNIQUE INDEX `plans_job` ON `plans` (`job_id`);--> statement-breakpoint
 CREATE TABLE `questions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`idea_id` text NOT NULL,
@@ -37,6 +38,7 @@ CREATE TABLE `research_jobs` (
 	`kind` text NOT NULL,
 	`status` text NOT NULL,
 	`attempt` integer DEFAULT 1 NOT NULL,
+	`dispatch_failures` integer DEFAULT 0 NOT NULL,
 	`run_id` text,
 	`repair_used` integer DEFAULT false NOT NULL,
 	`not_before` integer NOT NULL,
@@ -49,5 +51,6 @@ CREATE TABLE `research_jobs` (
 	FOREIGN KEY (`idea_id`) REFERENCES `ideas`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `research_jobs_one_active` ON `research_jobs` (`idea_id`) WHERE "research_jobs"."status" in ('QUEUED', 'RUNNING');--> statement-breakpoint
 CREATE INDEX `research_jobs_status` ON `research_jobs` (`status`,`not_before`);--> statement-breakpoint
 CREATE INDEX `research_jobs_idea` ON `research_jobs` (`idea_id`,`created_at`);

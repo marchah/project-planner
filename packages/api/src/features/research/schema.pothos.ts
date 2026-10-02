@@ -9,6 +9,17 @@ builder.queryFields((t) => ({
 }));
 
 builder.mutationFields((t) => ({
+  // Here rather than with the idea entity: deleting an idea must stop its research run first.
+  deleteIdea: t.field({
+    type: IdeaRef,
+    errors: { types: [NotFoundError] },
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      const idea = await ctx.services.ideaService.getIdeaById(args.id);
+      await ctx.services.researchService.deleteIdea(args.id);
+      return idea;
+    },
+  }),
   startResearch: t.field({
     type: IdeaRef,
     errors: { types: [NotFoundError, ServiceUnavailableError] },

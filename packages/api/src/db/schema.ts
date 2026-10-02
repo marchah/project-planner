@@ -44,7 +44,11 @@ export const plans = sqliteTable(
     jobId: text('job_id'),
     createdAt: timestamp('created_at').notNull().default(now),
   },
-  (t) => [uniqueIndex('plans_idea_version').on(t.ideaId, t.version)],
+  (t) => [
+    uniqueIndex('plans_idea_version').on(t.ideaId, t.version),
+    // A job produces at most one plan, so finishing it again (a retry, a restart) cannot add another.
+    uniqueIndex('plans_job').on(t.jobId),
+  ],
 );
 
 export const questions = sqliteTable(
@@ -73,6 +77,7 @@ export const researchJobs = sqliteTable(
     kind: text('kind').$type<ResearchJobKind>().notNull(),
     status: text('status').$type<ResearchJobStatus>().notNull(),
     attempt: integer('attempt').notNull().default(1),
+    dispatchFailures: integer('dispatch_failures').notNull().default(0),
     runId: text('run_id'),
     repairUsed: integer('repair_used', { mode: 'boolean' }).notNull().default(false),
     notBefore: timestamp('not_before').notNull(),
@@ -84,6 +89,10 @@ export const researchJobs = sqliteTable(
     updatedAt: timestamp('updated_at').notNull().default(now),
   },
   (t) => [
+    // At most one queued-or-running job per idea, even when two requests race to queue one.
+    uniqueIndex('research_jobs_one_active')
+      .on(t.ideaId)
+      .where(sql`${t.status} in ('QUEUED', 'RUNNING')`),
     index('research_jobs_status').on(t.status, t.notBefore),
     index('research_jobs_idea').on(t.ideaId, t.createdAt),
   ],

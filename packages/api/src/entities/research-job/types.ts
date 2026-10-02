@@ -19,6 +19,8 @@ export interface ResearchJob {
   status: ResearchJobStatus;
   /** 1-based; a failed attempt is retried until MAX_ATTEMPTS. */
   attempt: number;
+  /** Consecutive failures to hand the current attempt to the runner; reset once one is accepted. */
+  dispatchFailures: number;
   runId: Maybe<string>;
   repairUsed: boolean;
   /** A queued job is not started before this. */
@@ -36,6 +38,7 @@ export type ResearchJobPatch = Partial<
     ResearchJob,
     | 'status'
     | 'attempt'
+    | 'dispatchFailures'
     | 'runId'
     | 'repairUsed'
     | 'notBefore'
@@ -53,7 +56,12 @@ export interface ResearchJobRepository {
   findRunningJob: () => Promise<Maybe<ResearchJob>>;
   findNextDueJob: (now: Date) => Promise<Maybe<ResearchJob>>;
   listIdeaIdsWithJobs: () => Promise<string[]>;
-  createJob: (ideaId: string, kind: ResearchJobKind, now: Date) => Promise<ResearchJob>;
+  /** Inserts a QUEUED job unless the idea already has an active one, atomically. */
+  insertJobUnlessActive: (
+    ideaId: string,
+    kind: ResearchJobKind,
+    now: Date,
+  ) => Promise<Maybe<ResearchJob>>;
   updateJob: (id: string, patch: ResearchJobPatch, now: Date) => Promise<Maybe<ResearchJob>>;
 }
 
@@ -64,6 +72,11 @@ export interface ResearchJobService {
   findRunningJob: () => Promise<Maybe<ResearchJob>>;
   findNextDueJob: (now: Date) => Promise<Maybe<ResearchJob>>;
   listIdeaIdsWithJobs: () => Promise<string[]>;
-  createJob: (ideaId: string, kind: ResearchJobKind, now: Date) => Promise<ResearchJob>;
+  /** Queues a job for the idea, or returns the one already queued or running; `created` tells which. */
+  queueJob: (
+    ideaId: string,
+    kind: ResearchJobKind,
+    now: Date,
+  ) => Promise<{ job: ResearchJob; created: boolean }>;
   updateJob: (id: string, patch: ResearchJobPatch, now: Date) => Promise<ResearchJob>;
 }

@@ -1,4 +1,4 @@
-import { NotFoundError } from '../../common/errors';
+import { ConflictError, NotFoundError } from '../../common/errors';
 import type { Maybe } from '../../common/types';
 import type {
   ResearchJob,
@@ -39,8 +39,16 @@ export function researchJobServiceFactory({
     return researchJobRepository.listIdeaIdsWithJobs();
   }
 
-  function createJob(ideaId: string, kind: ResearchJobKind, now: Date): Promise<ResearchJob> {
-    return researchJobRepository.createJob(ideaId, kind, now);
+  async function queueJob(
+    ideaId: string,
+    kind: ResearchJobKind,
+    now: Date,
+  ): Promise<{ job: ResearchJob; created: boolean }> {
+    const job = await researchJobRepository.insertJobUnlessActive(ideaId, kind, now);
+    if (job) return { job, created: true };
+    const active = await researchJobRepository.findActiveJobByIdeaId(ideaId);
+    if (!active) throw new ConflictError(`Could not queue research for idea ${ideaId}`);
+    return { job: active, created: false };
   }
 
   async function updateJob(id: string, patch: ResearchJobPatch, now: Date): Promise<ResearchJob> {
@@ -56,7 +64,7 @@ export function researchJobServiceFactory({
     findRunningJob,
     findNextDueJob,
     listIdeaIdsWithJobs,
-    createJob,
+    queueJob,
     updateJob,
   };
 }

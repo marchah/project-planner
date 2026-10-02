@@ -65,13 +65,18 @@ export function researchJobRepositoryFactory({ db }: { db: Db }): ResearchJobRep
     return rows.map((row) => row.ideaId);
   }
 
-  async function createJob(ideaId: string, kind: ResearchJobKind, now: Date): Promise<ResearchJob> {
+  async function insertJobUnlessActive(
+    ideaId: string,
+    kind: ResearchJobKind,
+    now: Date,
+  ): Promise<Maybe<ResearchJob>> {
     const row: ResearchJob = {
       id: randomUUID(),
       ideaId,
       kind,
       status: ResearchJobStatus.QUEUED,
       attempt: 1,
+      dispatchFailures: 0,
       runId: null,
       repairUsed: false,
       notBefore: now,
@@ -82,8 +87,9 @@ export function researchJobRepositoryFactory({ db }: { db: Db }): ResearchJobRep
       createdAt: now,
       updatedAt: now,
     };
-    await db.insert(researchJobs).values(row);
-    return row;
+    // research_jobs_one_active turns a racing second insert into a no-op instead of a duplicate.
+    const inserted = await db.insert(researchJobs).values(row).onConflictDoNothing().returning();
+    return inserted[0] ?? null;
   }
 
   async function updateJob(
@@ -106,7 +112,7 @@ export function researchJobRepositoryFactory({ db }: { db: Db }): ResearchJobRep
     findRunningJob,
     findNextDueJob,
     listIdeaIdsWithJobs,
-    createJob,
+    insertJobUnlessActive,
     updateJob,
   };
 }

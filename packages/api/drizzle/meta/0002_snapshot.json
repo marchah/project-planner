@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "56f40369-bcef-4a73-9c18-71cebe01393d",
+  "id": "d44610b2-9343-4a73-b65e-2b89e4ead99d",
   "prevId": "8647723e-b666-4502-a2a0-eb7cdd0481cc",
   "tables": {
     "ideas": {
@@ -168,6 +168,11 @@
           "name": "plans_idea_version",
           "columns": ["idea_id", "version"],
           "isUnique": true
+        },
+        "plans_job": {
+          "name": "plans_job",
+          "columns": ["job_id"],
+          "isUnique": true
         }
       },
       "foreignKeys": {
@@ -329,6 +334,14 @@
           "autoincrement": false,
           "default": 1
         },
+        "dispatch_failures": {
+          "name": "dispatch_failures",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "run_id": {
           "name": "run_id",
           "type": "text",
@@ -397,6 +410,12 @@
         }
       },
       "indexes": {
+        "research_jobs_one_active": {
+          "name": "research_jobs_one_active",
+          "columns": ["idea_id"],
+          "isUnique": true,
+          "where": "\"research_jobs\".\"status\" in ('QUEUED', 'RUNNING')"
+        },
         "research_jobs_status": {
           "name": "research_jobs_status",
           "columns": ["status", "not_before"],

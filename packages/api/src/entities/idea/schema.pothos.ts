@@ -70,10 +70,4 @@ builder.mutationFields((t) => ({
     args: { id: t.arg.id({ required: true }) },
     resolve: (_root, args, ctx) => ctx.services.ideaService.generateTitleForIdea(args.id),
   }),
-  deleteIdea: t.field({
-    type: IdeaRef,
-    errors: { types: [NotFoundError] },
-    args: { id: t.arg.id({ required: true }) },
-    resolve: (_root, args, ctx) => ctx.services.ideaService.deleteIdea(args.id),
-  }),
 }));

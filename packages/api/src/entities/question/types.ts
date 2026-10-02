@@ -38,12 +38,14 @@ export interface NewQuestion {
 export interface QuestionRepository {
   listQuestionsByIdeaId: (ideaId: string) => Promise<Question[]>;
   countOpenQuestionsByIdeaId: (ideaId: string) => Promise<number>;
-  createQuestions: (
+  /** In one transaction: supersede the idea's unanswered open questions, then ask `questions`
+   * (at most `limit`) for `planId`. A no-op when that plan's questions were already asked. */
+  replaceUnansweredOpenQuestions: (
     ideaId: string,
     questions: NewQuestion[],
-    askedInPlanId: Maybe<string>,
+    planId: string,
+    limit: number,
   ) => Promise<Question[]>;
-  supersedeUnansweredOpenQuestions: (ideaId: string) => Promise<number>;
 }
 
 export interface QuestionService {
@@ -54,6 +56,6 @@ export interface QuestionService {
   replaceOpenQuestions: (
     ideaId: string,
     questions: NewQuestion[],
-    askedInPlanId: Maybe<string>,
+    planId: string,
   ) => Promise<Question[]>;
 }

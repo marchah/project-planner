@@ -43,6 +43,8 @@ export interface ResearchService {
   isResearchEnabled: () => boolean;
   /** Queue research for an idea, or return the job already queued or running for it. */
   startResearch: (ideaId: string) => Promise<ResearchJob>;
+  /** Delete an idea, stopping its research run first if one is running. */
+  deleteIdea: (ideaId: string) => Promise<void>;
   /** Advance the queue by one step. Called on an interval by the worker; never concurrently. */
   tickResearch: (now: Date) => Promise<void>;
   buildIntakePrompt: (idea: Idea, today: Date) => string;

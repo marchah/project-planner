@@ -16,6 +16,11 @@ export function planRepositoryFactory({ db }: { db: Db }): PlanRepository {
     return rows[0] ?? null;
   }
 
+  async function findPlanByJobId(jobId: string): Promise<Maybe<Plan>> {
+    const rows = await db.select().from(plans).where(eq(plans.jobId, jobId)).limit(1);
+    return rows[0] ?? null;
+  }
+
   async function listPlansByIdeaId(ideaId: string): Promise<Plan[]> {
     return db.select().from(plans).where(eq(plans.ideaId, ideaId)).orderBy(desc(plans.version));
   }
@@ -37,5 +42,5 @@ export function planRepositoryFactory({ db }: { db: Db }): PlanRepository {
     });
   }
 
-  return { findLatestPlanByIdeaId, listPlansByIdeaId, createPlan };
+  return { findLatestPlanByIdeaId, findPlanByJobId, listPlansByIdeaId, createPlan };
 }

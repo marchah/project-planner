@@ -20,6 +20,10 @@ import {
 
 export const MAX_ATTEMPTS = 3;
 export const RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000];
+/** Handing a run to the runner is retried with the SAME idempotency key, so a run the runner did
+ * accept before the response was lost is replayed rather than started twice. */
+export const MAX_DISPATCH_FAILURES = 5;
+export const DISPATCH_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
 const PLAN_TARGET_CHARS = 8_000;
 const RESEARCH_TARGET_CHARS = 6_000;
 
@@ -128,15 +132,15 @@ export function buildRepairPrompt(error: string): string {
 }
 
 export function researchServiceFactory({
-  ideaService: { getIdeaById, listIdeas, updateIdea },
-  planService: { getLatestPlanForIdea, savePlan },
+  ideaService: { getIdeaById, listIdeas, updateIdea, deleteIdea: deleteIdeaRecord },
+  planService: { getLatestPlanForIdea, findPlanForJob, savePlan },
   questionService: { replaceOpenQuestions },
   researchJobService: {
     findActiveJobForIdea,
     findRunningJob,
     findNextDueJob,
     listIdeaIdsWithJobs,
-    createJob,
+    queueJob,
     updateJob,
   },
   researchRunner,
@@ -160,7 +164,16 @@ export function researchServiceFactory({
     if (!researchRunner.isConfigured()) {
       throw new ServiceUnavailableError('Research is not set up on this board (HERMES_API_URL).');
     }
-    return (await findActiveJobForIdea(ideaId)) ?? queueIntake(idea, now());
+    return queueIntake(idea, now());
+  }
+
+  async function deleteIdea(ideaId: string): Promise<void> {
+    // Deleting the idea cascades to its job, so stop the run first or it keeps going unwatched
+    // and the worker, seeing nothing running, starts the next one alongside it.
+    const active = await findActiveJobForIdea(ideaId);
+    if (active?.status === ResearchJobStatus.RUNNING && active.runId)
+      await stopQuietly(active.runId);
+    await deleteIdeaRecord(ideaId);
   }
 
   async function tickResearch(at: Date): Promise<void> {
@@ -180,7 +193,8 @@ export function researchServiceFactory({
   }
 
   async function queueIntake(idea: Idea, at: Date): Promise<ResearchJob> {
-    const job = await createJob(idea.id, ResearchJobKind.INTAKE, at);
+    const { job, created } = await queueJob(idea.id, ResearchJobKind.INTAKE, at);
+    if (!created) return job;
     if (idea.status === IdeaStatus.CAPTURED) {
       await updateIdea(idea.id, { status: IdeaStatus.RESEARCHING });
     }
@@ -200,7 +214,9 @@ export function researchServiceFactory({
     try {
       const idea = await getIdeaById(job.ideaId);
       const { runId } = await researchRunner.startRun({
-        prompt: buildIntakePromptFor(idea, at),
+        // The job's own date, not today's: a retried dispatch must send the same body, or the
+        // runner treats the reused idempotency key as a conflict instead of a replay.
+        prompt: buildIntakePromptFor(idea, job.createdAt),
         sessionId: null,
         idempotencyKey: `research-${job.id}-${String(job.attempt)}`,
       });
@@ -209,6 +225,7 @@ export function researchServiceFactory({
         {
           status: ResearchJobStatus.RUNNING,
           runId,
+          dispatchFailures: 0,
           repairUsed: false,
           startedAt: at,
           deadlineAt: new Date(at.getTime() + settings.runTimeoutMs),
@@ -219,8 +236,32 @@ export function researchServiceFactory({
       logInfo(`research run ${runId} started for idea ${job.ideaId}`, { tag: 'RESEARCH' });
     } catch (error: unknown) {
       logException(error, { tag: 'RESEARCH', extra: { jobId: job.id } });
-      await failAttempt(job, `could not start the run: ${(error as Error).message}`, at);
+      await retryDispatch(job, (error as Error).message, at);
     }
+  }
+
+  async function retryDispatch(job: ResearchJob, reason: string, at: Date): Promise<void> {
+    const failures = job.dispatchFailures + 1;
+    if (failures >= MAX_DISPATCH_FAILURES) {
+      await finalFailure(
+        job,
+        `could not start the run after ${String(failures)} tries: ${reason}`,
+        at,
+      );
+      return;
+    }
+    const delay =
+      DISPATCH_RETRY_DELAYS_MS[failures - 1] ?? DISPATCH_RETRY_DELAYS_MS.at(-1) ?? 60_000;
+    await updateJob(
+      job.id,
+      {
+        status: ResearchJobStatus.QUEUED,
+        dispatchFailures: failures,
+        notBefore: new Date(at.getTime() + delay),
+        error: `could not start the run, retrying: ${reason}`,
+      },
+      at,
+    );
   }
 
   async function pollJob(job: ResearchJob, at: Date): Promise<void> {
@@ -255,10 +296,10 @@ export function researchServiceFactory({
     }
     const parsed = parseResearchReply(run.output);
     if (parsed.ok) {
-      await complete(job, parsed.reply, at);
+      await complete(job, parsed.reply, at, pastDeadline);
       return;
     }
-    if (!job.repairUsed && run.sessionId) {
+    if (!job.repairUsed && run.sessionId && !pastDeadline) {
       try {
         const { runId } = await researchRunner.startRun({
           prompt: buildRepairPrompt(parsed.error),
@@ -281,35 +322,46 @@ export function researchServiceFactory({
         });
         return;
       } catch (error: unknown) {
+        // The next tick sees the same unusable reply and retries the repair with the same key.
         logException(error, { tag: 'RESEARCH', extra: { jobId: job.id } });
+        return;
       }
     }
     await failAttempt(job, `the reply could not be used: ${parsed.error}`, at);
   }
 
-  async function complete(job: ResearchJob, reply: ResearchReplyData, at: Date): Promise<void> {
+  // Safe to run more than once for a job (a retry after a failed write, a restart mid-way): the
+  // plan is found by job id and the questions by plan id, so nothing is added twice.
+  async function complete(
+    job: ResearchJob,
+    reply: ResearchReplyData,
+    at: Date,
+    pastDeadline: boolean,
+  ): Promise<void> {
     try {
       const idea = await getIdeaById(job.ideaId);
-      const plan = await savePlan({
-        ideaId: idea.id,
-        summary: reply.summary,
-        planMd: reply.plan_md,
-        stack: reply.stack.map((item) => ({
-          name: item.name,
-          version: item.version ?? null,
-          role: item.role,
-        })),
-        researchMd: reply.research_md,
-        sources: reply.sources.map((source) => ({
-          url: source.url,
-          title: source.title,
-          firstParty: source.first_party,
-        })),
-        suggestion:
-          reply.suggest_status === 'SHELVED' ? PlanSuggestion.SHELVED : PlanSuggestion.PLANNED,
-        shelveReason: reply.shelve_reason ?? null,
-        jobId: job.id,
-      });
+      const plan =
+        (await findPlanForJob(job.id)) ??
+        (await savePlan({
+          ideaId: idea.id,
+          summary: reply.summary,
+          planMd: reply.plan_md,
+          stack: reply.stack.map((item) => ({
+            name: item.name,
+            version: item.version ?? null,
+            role: item.role,
+          })),
+          researchMd: reply.research_md,
+          sources: reply.sources.map((source) => ({
+            url: source.url,
+            title: source.title,
+            firstParty: source.first_party,
+          })),
+          suggestion:
+            reply.suggest_status === 'SHELVED' ? PlanSuggestion.SHELVED : PlanSuggestion.PLANNED,
+          shelveReason: reply.shelve_reason ?? null,
+          jobId: job.id,
+        }));
       await replaceOpenQuestions(
         idea.id,
         reply.questions.map((question) => ({
@@ -333,7 +385,10 @@ export function researchServiceFactory({
       });
     } catch (error: unknown) {
       logException(error, { tag: 'RESEARCH', extra: { jobId: job.id } });
-      await failAttempt(job, `could not save the result: ${(error as Error).message}`, at);
+      const reason = `could not save the result: ${(error as Error).message}`;
+      // Keep the job running on the same finished run: the next tick tries again.
+      if (pastDeadline) await failAttempt(job, reason, at);
+      else await updateJob(job.id, { error: reason }, at);
     }
   }
 
@@ -346,6 +401,7 @@ export function researchServiceFactory({
         {
           status: ResearchJobStatus.QUEUED,
           attempt: job.attempt + 1,
+          dispatchFailures: 0,
           runId: null,
           repairUsed: false,
           notBefore: new Date(at.getTime() + delay),
@@ -360,12 +416,16 @@ export function researchServiceFactory({
       });
       return;
     }
+    await finalFailure(job, reason, at);
+  }
+
+  async function finalFailure(job: ResearchJob, reason: string, at: Date): Promise<void> {
     await updateJob(
       job.id,
       { status: ResearchJobStatus.FAILED, finishedAt: at, error: reason },
       at,
     );
-    logWarning(`research job ${job.id} failed after ${String(MAX_ATTEMPTS)} attempts`, {
+    logWarning(`research job ${job.id} failed for good`, {
       tag: 'RESEARCH',
       extra: { reason },
     });
@@ -387,6 +447,7 @@ export function researchServiceFactory({
   return {
     isResearchEnabled,
     startResearch,
+    deleteIdea,
     tickResearch,
     buildIntakePrompt: buildIntakePromptFor,
   };

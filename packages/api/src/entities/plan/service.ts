@@ -10,6 +10,10 @@ export function planServiceFactory({
     return planRepository.findLatestPlanByIdeaId(ideaId);
   }
 
+  function findPlanForJob(jobId: string): Promise<Maybe<Plan>> {
+    return planRepository.findPlanByJobId(jobId);
+  }
+
   function listPlansForIdea(ideaId: string): Promise<Plan[]> {
     return planRepository.listPlansByIdeaId(ideaId);
   }
@@ -18,5 +22,5 @@ export function planServiceFactory({
     return planRepository.createPlan(plan);
   }
 
-  return { getLatestPlanForIdea, listPlansForIdea, savePlan };
+  return { getLatestPlanForIdea, findPlanForJob, listPlansForIdea, savePlan };
 }

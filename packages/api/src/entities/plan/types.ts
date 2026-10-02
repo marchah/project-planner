@@ -37,12 +37,14 @@ export type NewPlan = Omit<Plan, 'id' | 'version' | 'createdAt'>;
 
 export interface PlanRepository {
   findLatestPlanByIdeaId: (ideaId: string) => Promise<Maybe<Plan>>;
+  findPlanByJobId: (jobId: string) => Promise<Maybe<Plan>>;
   listPlansByIdeaId: (ideaId: string) => Promise<Plan[]>;
   createPlan: (plan: NewPlan) => Promise<Plan>;
 }
 
 export interface PlanService {
   getLatestPlanForIdea: (ideaId: string) => Promise<Maybe<Plan>>;
+  findPlanForJob: (jobId: string) => Promise<Maybe<Plan>>;
   listPlansForIdea: (ideaId: string) => Promise<Plan[]>;
   savePlan: (plan: NewPlan) => Promise<Plan>;
 }

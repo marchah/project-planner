@@ -16,6 +16,7 @@ import { researchJobServiceFactory } from '../../entities/research-job/service';
 import { ResearchJobStatus, type ResearchJobService } from '../../entities/research-job/types';
 import {
   MAX_ATTEMPTS,
+  MAX_DISPATCH_FAILURES,
   buildIntakePrompt,
   parseResearchReply,
   researchServiceFactory,
@@ -38,15 +39,19 @@ const reply = (over: Record<string, unknown> = {}) =>
     ...over,
   });
 
-/** A scripted stand-in for Hermes: each started run follows the next queued script. */
+/** A scripted stand-in for Hermes: each new run follows the next queued script, and like Hermes the
+ * same idempotency key returns the same run instead of starting another. */
 function fakeRunner() {
   const runs = new Map<string, ResearchRun>();
+  const byKey = new Map<string, string>();
   const started: { runId: string; prompt: string; sessionId: Maybe<string>; key: string }[] = [];
-  const scripts: (ResearchRun | 'throw')[] = [];
+  const scripts: (ResearchRun | 'throw' | 'accept-then-throw')[] = [];
   const stopped: string[] = [];
   const runner: ResearchRunner = {
     isConfigured: () => true,
     startRun: ({ prompt, sessionId, idempotencyKey }) => {
+      const known = byKey.get(idempotencyKey);
+      if (known) return Promise.resolve({ runId: known });
       const script = scripts.shift() ?? {
         state: ResearchRunState.ACTIVE,
         output: null,
@@ -56,7 +61,18 @@ function fakeRunner() {
       if (script === 'throw') return Promise.reject(new Error('Hermes unreachable'));
       const runId = `run-${String(started.length + 1)}`;
       started.push({ runId, prompt, sessionId, key: idempotencyKey });
-      runs.set(runId, script);
+      byKey.set(idempotencyKey, runId);
+      runs.set(
+        runId,
+        script === 'accept-then-throw'
+          ? { state: ResearchRunState.ACTIVE, output: null, sessionId: 's1', detail: 'running' }
+          : script,
+      );
+      if (script === 'accept-then-throw') {
+        return Promise.reject(
+          new Error('Hermes unreachable: The operation was aborted due to timeout'),
+        );
+      }
       return Promise.resolve({ runId });
     },
     getRun: (runId) => Promise.resolve(runs.get(runId) ?? null),
@@ -95,11 +111,14 @@ beforeEach(async () => {
 });
 afterEach(() => cleanup());
 
-function makeService(runner: ResearchRunner, over: { researchOnCapture?: boolean } = {}) {
+function makeService(
+  runner: ResearchRunner,
+  over: { researchOnCapture?: boolean; questionService?: QuestionService } = {},
+) {
   return researchServiceFactory({
     ideaService: ideas,
     planService: plans,
-    questionService: questions,
+    questionService: over.questionService ?? questions,
     researchJobService: jobs,
     researchRunner: runner,
     settings: {
@@ -209,12 +228,18 @@ describe('research', () => {
     job = await jobs.getLatestJobForIdea(idea.id);
     expect(job).toMatchObject({ status: ResearchJobStatus.QUEUED, attempt: 3, notBefore: at(52) });
 
-    fake.scripts.push('throw');
     await service.tickResearch(at(52));
+    fake.runs.set('run-3', {
+      state: ResearchRunState.FAILED,
+      output: null,
+      sessionId: null,
+      detail: 'cancelled',
+    });
+    await service.tickResearch(at(53));
     job = await jobs.getLatestJobForIdea(idea.id);
     expect(job?.status).toBe(ResearchJobStatus.FAILED);
     expect(job?.attempt).toBe(MAX_ATTEMPTS);
-    expect(job?.error).toContain('Hermes unreachable');
+    expect(job?.error).toContain('cancelled');
     expect((await ideas.getIdeaById(idea.id)).status).toBe(IdeaStatus.CAPTURED);
   });
 
@@ -292,6 +317,149 @@ describe('research', () => {
     expect(await plans.listPlansForIdea(idea.id)).toEqual([]);
     expect(await questions.listQuestionsForIdea(idea.id)).toEqual([]);
     expect(await jobs.getLatestJobForIdea(idea.id)).toBeNull();
+  });
+
+  it('retries a dispatch that timed out with the same key, so an accepted run is not started twice', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await capture();
+    await service.startResearch(idea.id);
+    fake.scripts.push('accept-then-throw');
+    await service.tickResearch(at(0));
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      status: ResearchJobStatus.QUEUED,
+      attempt: 1,
+      dispatchFailures: 1,
+    });
+
+    await service.tickResearch(at(1));
+    expect(fake.started.map((run) => run.runId)).toEqual(['run-1']);
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      status: ResearchJobStatus.RUNNING,
+      runId: 'run-1',
+      dispatchFailures: 0,
+    });
+  });
+
+  it('sends the same prompt on a retried dispatch, even on a later day', async () => {
+    const prompts: string[] = [];
+    const fake = fakeRunner();
+    const runner: ResearchRunner = {
+      ...fake.runner,
+      startRun: (input) => {
+        prompts.push(input.prompt);
+        return prompts.length === 1
+          ? Promise.reject(new Error('timeout'))
+          : fake.runner.startRun(input);
+      },
+    };
+    const service = makeService(runner);
+    const idea = await capture();
+    await service.startResearch(idea.id);
+    await service.tickResearch(at(0));
+    await service.tickResearch(at(24 * 60));
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toBe(prompts[0]);
+  });
+
+  it('gives up after repeated dispatch failures', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await capture();
+    await service.startResearch(idea.id);
+    for (let i = 0; i < MAX_DISPATCH_FAILURES; i += 1) {
+      fake.scripts.push('throw');
+      await service.tickResearch(at(i * 60));
+    }
+    const job = await jobs.getLatestJobForIdea(idea.id);
+    expect(job?.status).toBe(ResearchJobStatus.FAILED);
+    expect(job?.error).toContain(`after ${String(MAX_DISPATCH_FAILURES)} tries`);
+    expect((await ideas.getIdeaById(idea.id)).status).toBe(IdeaStatus.CAPTURED);
+  });
+
+  it('retries a repair whose dispatch failed with the same key on the next tick', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await capture();
+    await service.startResearch(idea.id);
+    await service.tickResearch(at(0));
+    fake.finish('run-1', { output: 'not json', sessionId: 'sess-1' });
+    fake.scripts.push('accept-then-throw');
+    await service.tickResearch(at(1));
+    await service.tickResearch(at(2));
+    expect(fake.started.map((run) => run.runId)).toEqual(['run-1', 'run-2']);
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      runId: 'run-2',
+      repairUsed: true,
+    });
+  });
+
+  it('finishing a job after a failed write, or twice, leaves one plan and one set of questions', async () => {
+    const fake = fakeRunner();
+    let failOnce = true;
+    const flaky: QuestionService = {
+      ...questions,
+      replaceOpenQuestions: (...args) => {
+        if (failOnce) {
+          failOnce = false;
+          return Promise.reject(new Error('SQLITE_BUSY'));
+        }
+        return questions.replaceOpenQuestions(...args);
+      },
+    };
+    const service = makeService(fake.runner, { questionService: flaky });
+    const idea = await capture();
+    await service.startResearch(idea.id);
+    await service.tickResearch(at(0));
+    fake.finish('run-1', { output: reply() });
+
+    await service.tickResearch(at(1));
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      status: ResearchJobStatus.RUNNING,
+      attempt: 1,
+    });
+    await service.tickResearch(at(2));
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      status: ResearchJobStatus.SUCCEEDED,
+    });
+    expect(fake.started).toHaveLength(1);
+    expect(await plans.listPlansForIdea(idea.id)).toHaveLength(1);
+    expect(await questions.listQuestionsForIdea(idea.id)).toHaveLength(1);
+
+    // A restart between the last two writes replays finishing the same job.
+    const job = await jobs.getLatestJobForIdea(idea.id);
+    await jobs.updateJob(job?.id ?? '', { status: ResearchJobStatus.RUNNING }, at(3));
+    await service.tickResearch(at(3));
+    expect(await plans.listPlansForIdea(idea.id)).toHaveLength(1);
+    expect((await questions.listQuestionsForIdea(idea.id)).map((q) => q.number)).toEqual([1]);
+  });
+
+  it('queues one job when two requests race to start research', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await capture();
+    const [first, second] = await Promise.all([
+      service.startResearch(idea.id),
+      service.startResearch(idea.id),
+    ]);
+    expect(second.id).toBe(first.id);
+    expect(await jobs.listIdeaIdsWithJobs()).toEqual([idea.id]);
+  });
+
+  it('deleting an idea stops its running research run, and only a running one', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const running = await capture('running');
+    const queued = await capture('queued');
+    await service.startResearch(running.id);
+    await service.tickResearch(at(0));
+    await service.startResearch(queued.id);
+
+    await service.deleteIdea(running.id);
+    expect(fake.stopped).toEqual(['run-1']);
+    await service.deleteIdea(queued.id);
+    expect(fake.stopped).toEqual(['run-1']);
+    await expect(ideas.getIdeaById(running.id)).rejects.toThrow('No idea');
   });
 
   it('refuses to start when research is not configured', async () => {
