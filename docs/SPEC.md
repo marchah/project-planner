@@ -297,9 +297,9 @@ Later (step 3): answer fields on questions, "what changed last refresh", and ref
 
 ## 13. Open decisions
 
-- **How hard research should push "it already exists".** The first three real runs, Codex,
-  2026-10-02, all suggested shelving: a browser zombie co-op game twice (Der Koloss) and a
-  private-equity wealth tracker (Kubera). The suggestions were sourced and each plan still carried a
-  conditional build plan and a question about purpose, but for personal projects building it is
-  often the point. The lever is `RESEARCH_CONTEXT` (configuration, no code change), e.g. saying
-  that you build to learn and want a build plan by default.
+- **How hard research should push "it already exists".** The first three real research runs
+  (Codex, 2026-10-02) all suggested shelving in favour of an existing product. Each suggestion was
+  sourced, and each plan still carried a conditional build plan and a question about what the
+  project is for, but for personal projects building it is often the point. The lever is
+  `RESEARCH_CONTEXT` (configuration, no code change), e.g. saying that you build to learn and want
+  a build plan by default.
