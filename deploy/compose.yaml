@@ -3,11 +3,14 @@
 # Deployed as a Portainer GIT STACK from this repo:
 #   Portainer -> Stacks -> Add stack -> Repository
 #     Repository URL:  https://github.com/marchah/project-planner
-#     Reference:       refs/heads/main
+#     Reference:       refs/heads/deploy
 #     Compose path:    deploy/compose.yaml
 #
 # Public repo + public GHCR package: no git or registry credentials needed. Nothing secret or
 # environment-specific lives here: set the env vars below on the Portainer stack.
+#
+# Track `deploy`, not `main`: the Publish image workflow moves `deploy` only after the image for that
+# commit is pushed, so a redeploy can never pull the previous image.
 #
 # `pull_policy: always` makes a redeploy fetch the moving `main` tag instead of reusing a stale
 # local image. To roll back, pin an immutable tag: ghcr.io/marchah/project-planner:sha-<short>
