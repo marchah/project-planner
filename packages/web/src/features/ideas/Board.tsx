@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useQuery } from 'urql';
 import { graphql } from '../../graphql';
 import { cn } from '../../lib/utils';
-import { isResearchActive } from './ResearchSection';
+import { isResearchActive } from './research';
 import { ARCHIVED_STATUSES, STATUS_META, formatDate } from './status';
 import { usePolling } from './usePolling';
 

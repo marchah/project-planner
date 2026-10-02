@@ -3,7 +3,9 @@ import { useMutation, useQuery } from 'urql';
 import { Button } from '../../components/ui/button';
 import { graphql, type ResultOf } from '../../graphql';
 import { cn } from '../../lib/utils';
-import { IdeaResearchFragment, ResearchSection, isResearchActive } from './ResearchSection';
+import type { Maybe } from '../../lib/types';
+import { IdeaResearchFragment, isResearchActive } from './research';
+import { ResearchSection } from './ResearchSection';
 import { STATUS_META, STATUS_ORDER, formatDate, sourceLabel, type IdeaStatus } from './status';
 import { usePolling } from './usePolling';
 
@@ -172,32 +174,8 @@ function IdeaDetail({
   researchEnabled: boolean;
   onClose: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(idea.title ?? '');
-  const [body, setBody] = useState(idea.body);
   const [message, setMessage] = useState('');
-  const [{ fetching: saving }, updateIdea] = useMutation(UpdateIdeaMutation);
-  const [{ fetching: titling }, generateIdeaTitle] = useMutation(GenerateIdeaTitleMutation);
   const [{ fetching: deleting }, deleteIdea] = useMutation(DeleteIdeaMutation);
-  const meta = STATUS_META[idea.status];
-
-  async function changeStatus(status: IdeaStatus) {
-    const result = await updateIdea({ id: idea.id, status });
-    setMessage(failureMessage(result.data?.updateIdea, result.error?.message));
-  }
-
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    const result = await updateIdea({ id: idea.id, title, body });
-    const failure = failureMessage(result.data?.updateIdea, result.error?.message);
-    setMessage(failure);
-    if (!failure) setEditing(false);
-  }
-
-  async function generateTitle() {
-    const result = await generateIdeaTitle({ id: idea.id });
-    setMessage(failureMessage(result.data?.generateIdeaTitle, result.error?.message));
-  }
 
   async function remove() {
     const name = idea.title ? `"${idea.title}"` : 'this idea';
@@ -210,126 +188,15 @@ function IdeaDetail({
 
   return (
     <article className="flex flex-col">
-      <header className={cn('flex items-start justify-between gap-4 p-6', meta.note)}>
-        <div className="space-y-1 text-stone-900">
-          <h2
-            id="idea-title"
-            className={cn('text-xl font-bold leading-tight', !idea.title && 'text-stone-600')}
-          >
-            {idea.title ?? 'Untitled idea'}
-          </h2>
-          <p className="text-sm text-stone-700">
-            Captured from{' '}
-            {idea.sourceUrl ? (
-              <a href={idea.sourceUrl} target="_blank" rel="noreferrer" className="underline">
-                {sourceLabel(idea.source)}
-              </a>
-            ) : (
-              sourceLabel(idea.source)
-            )}{' '}
-            · {formatDate(idea.createdAt)}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <label htmlFor="idea-status" className="sr-only">
-            Status
-          </label>
-          <select
-            id="idea-status"
-            value={idea.status}
-            disabled={saving}
-            onChange={(event) => void changeStatus(event.target.value as IdeaStatus)}
-            className="h-8 rounded-md border border-stone-400 bg-white/70 px-2 text-sm text-stone-900"
-          >
-            {STATUS_ORDER.map((status) => (
-              <option key={status} value={status}>
-                {STATUS_META[status].label}
-              </option>
-            ))}
-          </select>
-          <Button variant="ghost" size="sm" onClick={onClose} className="text-stone-900">
-            Close
-          </Button>
-        </div>
-      </header>
-
+      <IdeaHeader idea={idea} onClose={onClose} onMessage={setMessage} />
       <div className="space-y-6 overflow-y-auto p-6">
         {message ? (
           <p role="alert" className="text-sm text-destructive">
             {message}
           </p>
         ) : null}
-
-        <section aria-labelledby="idea-section" className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 id="idea-section" className="font-semibold">
-              Idea
-            </h3>
-            {!editing ? (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={titling}
-                  onClick={() => void generateTitle()}
-                >
-                  {titling ? 'Writing title…' : idea.title ? 'Regenerate title' : 'Generate title'}
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                  Edit
-                </Button>
-              </div>
-            ) : null}
-          </div>
-          {editing ? (
-            <form onSubmit={(event) => void save(event)} className="space-y-2">
-              <label htmlFor="edit-title" className="text-sm text-muted-foreground">
-                Title
-              </label>
-              <input
-                id="edit-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                maxLength={200}
-                placeholder="Leave empty for an untitled idea"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-              />
-              <label htmlFor="edit-body" className="text-sm text-muted-foreground">
-                Description
-              </label>
-              <textarea
-                id="edit-body"
-                value={body}
-                onChange={(event) => setBody(event.target.value)}
-                rows={8}
-                maxLength={20_000}
-                className="w-full resize-y rounded-md border bg-background p-3 text-sm"
-              />
-              <div className="flex gap-2">
-                <Button type="submit" size="sm" disabled={saving || !body.trim()}>
-                  {saving ? 'Saving…' : 'Save'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setTitle(idea.title ?? '');
-                    setBody(idea.body);
-                    setEditing(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          ) : (
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{idea.body}</p>
-          )}
-        </section>
-
+        <IdeaText idea={idea} onMessage={setMessage} />
         <ResearchSection idea={idea} enabled={researchEnabled} onMessage={setMessage} />
-
         <footer className="flex justify-end border-t pt-4">
           <Button variant="ghost" size="sm" disabled={deleting} onClick={() => void remove()}>
             <span className="text-destructive">{deleting ? 'Deleting…' : 'Delete idea'}</span>
@@ -337,5 +204,178 @@ function IdeaDetail({
         </footer>
       </div>
     </article>
+  );
+}
+
+function IdeaHeader({
+  idea,
+  onClose,
+  onMessage,
+}: {
+  idea: Idea;
+  onClose: () => void;
+  onMessage: (message: string) => void;
+}) {
+  const [{ fetching: saving }, updateIdea] = useMutation(UpdateIdeaMutation);
+  const meta = STATUS_META[idea.status];
+
+  async function changeStatus(status: IdeaStatus) {
+    const result = await updateIdea({ id: idea.id, status });
+    onMessage(failureMessage(result.data?.updateIdea, result.error?.message));
+  }
+
+  return (
+    <header className={cn('flex items-start justify-between gap-4 p-6', meta.note)}>
+      <div className="space-y-1 text-stone-900">
+        <h2
+          id="idea-title"
+          className={cn('text-xl font-bold leading-tight', !idea.title && 'text-stone-600')}
+        >
+          {idea.title ?? 'Untitled idea'}
+        </h2>
+        <p className="text-sm text-stone-700">
+          Captured from <SourceLink source={idea.source} url={idea.sourceUrl} /> ·{' '}
+          {formatDate(idea.createdAt)}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <label htmlFor="idea-status" className="sr-only">
+          Status
+        </label>
+        <select
+          id="idea-status"
+          value={idea.status}
+          disabled={saving}
+          onChange={(event) => void changeStatus(event.target.value as IdeaStatus)}
+          className="h-8 rounded-md border border-stone-400 bg-white/70 px-2 text-sm text-stone-900"
+        >
+          {STATUS_ORDER.map((status) => (
+            <option key={status} value={status}>
+              {STATUS_META[status].label}
+            </option>
+          ))}
+        </select>
+        <Button variant="ghost" size="sm" onClick={onClose} className="text-stone-900">
+          Close
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+function SourceLink({ source, url }: { source: string; url: Maybe<string> }) {
+  if (!url) return <>{sourceLabel(source)}</>;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="underline">
+      {sourceLabel(source)}
+    </a>
+  );
+}
+
+function IdeaText({ idea, onMessage }: { idea: Idea; onMessage: (message: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [{ fetching: titling }, generateIdeaTitle] = useMutation(GenerateIdeaTitleMutation);
+
+  async function generateTitle() {
+    const result = await generateIdeaTitle({ id: idea.id });
+    onMessage(failureMessage(result.data?.generateIdeaTitle, result.error?.message));
+  }
+
+  return (
+    <section aria-labelledby="idea-section" className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 id="idea-section" className="font-semibold">
+          Idea
+        </h3>
+        {!editing ? (
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={titling}
+              onClick={() => void generateTitle()}
+            >
+              {titling ? 'Writing title…' : idea.title ? 'Regenerate title' : 'Generate title'}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+              Edit
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      {editing ? (
+        <IdeaEditForm
+          ideaId={idea.id}
+          initialTitle={idea.title ?? ''}
+          initialBody={idea.body}
+          onDone={() => setEditing(false)}
+          onMessage={onMessage}
+        />
+      ) : (
+        <p className="whitespace-pre-wrap text-sm leading-relaxed">{idea.body}</p>
+      )}
+    </section>
+  );
+}
+
+// Mounted fresh each time editing starts, so the draft starts from the saved idea on purpose.
+function IdeaEditForm({
+  ideaId,
+  initialTitle,
+  initialBody,
+  onDone,
+  onMessage,
+}: {
+  ideaId: string;
+  initialTitle: string;
+  initialBody: string;
+  onDone: () => void;
+  onMessage: (message: string) => void;
+}) {
+  const [title, setTitle] = useState(initialTitle);
+  const [body, setBody] = useState(initialBody);
+  const [{ fetching: saving }, updateIdea] = useMutation(UpdateIdeaMutation);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    const result = await updateIdea({ id: ideaId, title, body });
+    const failure = failureMessage(result.data?.updateIdea, result.error?.message);
+    onMessage(failure);
+    if (!failure) onDone();
+  }
+
+  return (
+    <form onSubmit={(event) => void save(event)} className="space-y-2">
+      <label htmlFor="edit-title" className="text-sm text-muted-foreground">
+        Title
+      </label>
+      <input
+        id="edit-title"
+        value={title}
+        onChange={(event) => setTitle(event.target.value)}
+        maxLength={200}
+        placeholder="Leave empty for an untitled idea"
+        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+      />
+      <label htmlFor="edit-body" className="text-sm text-muted-foreground">
+        Description
+      </label>
+      <textarea
+        id="edit-body"
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
+        rows={8}
+        maxLength={20_000}
+        className="w-full resize-y rounded-md border bg-background p-3 text-sm"
+      />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving || !body.trim()}>
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+          Cancel
+        </Button>
+      </div>
+    </form>
   );
 }
