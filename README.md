@@ -59,9 +59,13 @@ hostnames or IPs: the embedded resolver may not resolve single-label names.
 
 ## Deploy
 
-Portainer git stack from this repo, compose path `deploy/compose.yaml`. The `Publish image` workflow
-pushes `ghcr.io/marchah/project-planner:main` (plus `sha-<short>`) on every push to `main`; redeploy
-the stack to pick it up. The `project-planner-data` volume is the only copy of your ideas — back it
+Portainer git stack from this repo: reference **`refs/heads/deploy`**, compose path
+`deploy/compose.yaml`, with automatic updates on. On every push to `main`, the `Publish image`
+workflow pushes `ghcr.io/marchah/project-planner:main` (plus `sha-<short>`) and then moves the
+`deploy` branch to that commit, so the stack redeploys only once the image exists. Tracking `main`
+directly races the publish: a poll that lands in the ~2 minutes before the image is pushed
+redeploys the previous image and never retries. A commit whose image fails to build is not
+deployed at all. The `project-planner-data` volume is the only copy of your ideas — back it
 up.
 
 ## License

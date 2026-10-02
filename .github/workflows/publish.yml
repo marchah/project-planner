@@ -1,5 +1,9 @@
-# Publishes the container image to GHCR for commits that land on main (and v* tags).
-# ci.yml only checks that the Dockerfile builds; this is the workflow that pushes.
+# Publishes the container image to GHCR for commits that land on main (and v* tags), then moves the
+# `deploy` branch to the commit it just published. ci.yml only checks that the Dockerfile builds.
+#
+# Deployments track `deploy`, not `main`: the publish takes about 2 minutes and a git-polling
+# deployer can see a new `main` commit before its image exists, redeploy the previous image, and
+# never retry. `deploy` only ever points at a commit whose image is already in the registry.
 name: Publish image
 
 on:
@@ -16,7 +20,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # to move the deploy branch
       packages: write
     steps:
       - uses: actions/checkout@v4
@@ -44,3 +48,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Move the deploy branch to this commit
+        if: github.ref == 'refs/heads/main'
+        run: git push --force origin "HEAD:refs/heads/deploy"

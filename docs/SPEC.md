@@ -222,8 +222,9 @@ question badge and a red corner when research failed, and refresh/mute buttons.
 - **Repo:** public [`marchah/project-planner`](https://github.com/marchah/project-planner). The code
   holds nothing personal; ideas live only in the volume.
 - **Image:** the `Publish image` workflow pushes `ghcr.io/marchah/project-planner` on every push to
-  `main` (`main` + `sha-<short>` tags).
-- **Compose:** [`deploy/compose.yaml`](../deploy/compose.yaml), deployed as a Portainer git stack.
+  `main` (`main` + `sha-<short>` tags), then moves the `deploy` branch to that commit.
+- **Compose:** [`deploy/compose.yaml`](../deploy/compose.yaml), deployed as a Portainer git stack
+  tracking `deploy` (never `main`, which races the publish).
   `pull_policy: always`, healthcheck on `/healthz`, one named volume, host port 4200.
 - **No environment-specific values in this repo.** The compose file passes every endpoint through
   from the stack's env vars with an empty default; the homelab's values are recorded in the Proxmox
