@@ -60,24 +60,21 @@ different shapes) against ~16 s for even a trivial `/v1/runs` round trip, so cap
 and the Slack reply can quote it. If the model is unreachable the idea is saved untitled and can be
 titled from the board later; a capture is never lost to the title.
 
-### 2.2 Capture — a Slack `#ideas` channel on the existing Hermes gateway
+### 2.2 Capture — Slack `#ideas`, through the idea-capture plugin on CT 121
 
-Config only, no code: add the channel to the Slack gateway, with a `channel_overrides` system
-prompt:
+Live since 2026-10-02: Proxmox repo `hermes/idea-capture/`. A Hermes plugin on the
+`pre_gateway_dispatch` hook saves each top-level message from an allowed user through
+`POST /api/ideas`, exactly as written, and replies in its thread with the title and a link to the
+note. The gateway skips the message, so no agent turn runs.
 
-> Every message in this channel is a new project idea. POST its text verbatim to
-> `http://docker-host:4200/api/ideas` with curl, then reply with the `url` from the response.
-> Do not research it — the planner does that.
+It replaced the original plan, a channel prompt asking the agent to `curl` each message: the text
+arrives verbatim instead of being rebuilt inside a shell command, it takes about a second instead
+of an agent turn, and it does not depend on CT 120's chat model.
 
-**Recommended over having Hermes research inline in the Slack turn**, for one reason: the idea is
-stored _before_ any research starts. CT 120's prompt-cache corruption (7 incidents so far, onset
-anywhere from 50 min to 42 h) kills the in-flight turn. With inline research that would lose the
-idea, or leave it half-filed. With capture-first, a failed research run is a red corner on a
-sticky note and a retry button. It also gives intake and weekly refresh **one code path**, since
-both become website-dispatched runs.
-
-Hermes still writes the initial plan and questions. The only change is who starts that run: the
-board, not the Slack turn.
+**Capture-first still holds.** The idea is stored _before_ any research starts, so CT 120's
+prompt-cache corruption (7 incidents so far, onset anywhere from 50 min to 42 h) can cost a
+research run, never an idea. A failed run is a red corner on a sticky note and a retry button, and
+intake and weekly refresh share **one code path**, since both are board-dispatched runs.
 
 ### 2.3 Research — Hermes `/v1/runs`, one idea per run
 
@@ -91,16 +88,33 @@ retired loop learned the local model can't do reliably. Returned JSON is validat
 is stored; a malformed callback is lost silently. The REST API still exists (capture needs it), so
 Hermes _can_ file directly for ad-hoc Slack asks like "add a question to the grocery idea".
 
+### 2.4 Discussion — the idea's Slack thread, with Hermes
+
+Replies in an idea's thread go to the Hermes agent, as in any channel. Its `#ideas` channel prompt
+(live config on CT 121) tells it that a thread discusses the idea in its first message, and how to
+read that idea from the board: the plugin's reply carries the `?idea=<id>` link. Until step 3 it
+cannot change the board, and says so.
+
+Steps 2–3 give it a way to read and write the board: a **board MCP server**, registered in Hermes'
+`mcp_servers` the way kb-rag is. Step 2 adds a tool to read an idea with its current plan and
+questions; step 3 adds tools to answer a question or record a decision. These are typed tool calls
+rather than `curl`, for the same reason capture is a plugin. The board stays the record: what is
+decided in the thread lands as an answer and triggers the same debounced re-plan as answering on
+the board.
+
 ## 3. Flows
 
-**Capture.** Slack → Hermes → `POST /api/ideas` → note appears grey (`captured`) → intake job queued.
+**Capture.** Slack `#ideas` → idea-capture plugin (CT 121) → `POST /api/ideas` → the note appears
+(`CAPTURED`) with a model-written title, and its link is posted in the thread → intake job queued
+(step 2).
 
 **Intake.** The run researches how this is normally built today, returns a plan with a named,
 versioned `stack`, up to 5 questions, and sources. **"Someone already built this — use it" is a
 first-class outcome**: the board suggests `shelved` with the link.
 
-**Answer.** You open a note and type answers in the question panel. Each save pushes a refresh job
-10 minutes out, so answering three questions in a row triggers one refresh, not three. This is the
+**Answer.** You open a note and type answers in the question panel, or talk them through with
+Hermes in the idea's Slack thread, which records them through the board's MCP server (§2.4). Each
+answer pushes a refresh job 10 minutes out, so answering three questions in a row triggers one refresh, not three. This is the
 "answering re-plans it" behaviour no off-the-shelf tool had.
 
 **Weekly refresh.** Sunday 10:00 America/New_York, the board queues a refresh for every idea not
@@ -245,16 +259,17 @@ question badge and a red corner when research failed, and refresh/mute buttons.
 | No per-run toolset control, and `memory`, `cronjob` and `skill_manage` are enabled for API runs | Prompt rule: use web, web_extract and file reads only. If runs start writing to Hermes's memory or creating crons, add a dedicated `planner` profile with a trimmed toolset (the retired coder profile is the precedent)            |
 | CT 120 prompt-cache corruption                                                                  | Board deadline, stop and retry (§5). Or set `HERMES_PROVIDER=openai-codex`: already paid for through ChatGPT, rows bill `included`, immune to CT 120. Note that `model` is inert for that provider (`~/.codex/config.toml` decides) |
 | ~65k context per run on the local model                                                         | Stateless runs with capped inputs (§6)                                                                                                                                                                                              |
-| Capture depends on the local model making one `curl`                                            | Low risk (the probe's terminal call worked first time), and a lost capture shows as no reply in Slack. The board also has an "add idea" form                                                                                        |
+| Capture depends on a Hermes plugin hook (`pre_gateway_dispatch`)                                | The plugin is stdlib-only and imports nothing from Hermes; re-run `hermes plugins doctor idea-capture` after every Hermes upgrade. Without it, the board's add-idea form still works                                                |
 | Hermes's `/v1/runs` is not a documented stable contract                                         | Pin the Hermes version the board was tested against in its README, and re-run §1's probe after every Hermes upgrade                                                                                                                 |
 
 ## 12. Build order
 
 1. ✅ **Board + SQLite + REST + the "add idea" form.** A sticky-note inbox with no AI involved.
-2. **Job runner + intake contract.** Dispatch by hand on 2–3 real ideas and judge research quality
+2. **Job runner + intake contract, plus the board's MCP server with a read tool** (§2.4). Dispatch by hand on 2–3 real ideas and judge research quality
    before automating anything.
-3. **Answers, debounce and refresh.** Weekly schedule last.
-4. **Slack `#ideas` capture** (config on CT 121).
+3. **Answers, debounce and refresh, plus MCP tools to answer and record decisions.** Weekly schedule
+   last.
+4. ✅ **Slack `#ideas` capture:** the idea-capture plugin on CT 121, live 2026-10-02.
 5. Optional: the `planner` Hermes profile, if §11's toolset concern shows up in practice.
 
 ## 13. Open decisions

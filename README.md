@@ -1,11 +1,11 @@
 # Project Planner
 
-A sticky-note board for project ideas. Drop an idea on the board (or, soon, in Slack); later steps
+A sticky-note board for project ideas. Drop an idea on the board or in Slack; later steps
 have Hermes research it, write a plan and ask a few clarifying questions you can answer whenever
 you're ready, and re-check the plan weekly. See [docs/SPEC.md](./docs/SPEC.md) for the design and
 build order.
 
-**Today (step 1):** the board, capture from the board or over REST, edit, status, delete. Each new
+**Today:** the board, capture from the board, Slack or REST, edit, status, delete. Each new
 idea gets a short title written by a model; research and questions come next.
 
 Meant for a private network: there is no authentication. The repo holds no environment-specific
