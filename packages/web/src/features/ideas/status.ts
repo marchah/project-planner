@@ -37,7 +37,8 @@ export function formatDate(iso: string): string {
 export interface NoteText {
   /** Shown bold: the title, or the part of the first line it was cut from. */
   lead: string;
-  /** The rest of that first line, when the title was truncated from it. */
+  /** The rest of that first line, when the title was truncated from it. Keeps its leading space,
+   * if any, so a title cut mid-word rejoins the word. */
   continuation: string;
   /** Whatever the note shows after the first line. */
   rest: string;
@@ -53,7 +54,7 @@ export function noteText(title: string, body: string): NoteText {
   if (line === shown) return { lead: shown, continuation: '', rest };
   const prefix = shown.endsWith('…') ? shown.slice(0, -1).trimEnd() : '';
   if (prefix && line.startsWith(prefix)) {
-    return { lead: prefix, continuation: line.slice(prefix.length).trim(), rest };
+    return { lead: prefix, continuation: line.slice(prefix.length), rest };
   }
   return { lead: shown, continuation: '', rest: body.trim() };
 }

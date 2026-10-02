@@ -77,7 +77,7 @@ export function Board({ onOpen }: { onOpen: (id: string) => void }) {
                     <span className="text-base font-semibold leading-snug text-stone-900">
                       {text.lead}
                     </span>
-                    {text.continuation ? ` ${text.continuation}` : null}
+                    {text.continuation}
                     {text.rest ? `\n${text.rest}` : null}
                   </span>
                   <span className="mt-auto flex items-center justify-between pt-2 text-xs text-stone-600">

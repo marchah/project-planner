@@ -14,9 +14,13 @@ describe('noteText', () => {
   it('reads a truncated title straight into the rest of its line', () => {
     expect(noteText('a long first…', 'a long first line that goes on\nsecond line')).toEqual({
       lead: 'a long first',
-      continuation: 'line that goes on',
+      continuation: ' line that goes on',
       rest: 'second line',
     });
+  });
+
+  it('rejoins a word the title was cut through', () => {
+    expect(noteText('with di…', 'with different rooms').continuation).toBe('fferent rooms');
   });
 
   it('shows the whole body under an unrelated title', () => {
