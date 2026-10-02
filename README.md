@@ -6,9 +6,10 @@ you're ready, and re-check the plan weekly. See [docs/SPEC.md](./docs/SPEC.md) f
 build order.
 
 **Today (step 1):** the board, capture from the board or over REST, edit, status, delete. Each new
-idea gets a short title written by a model (CT 120's llama.cpp); research and questions come next.
+idea gets a short title written by a model; research and questions come next.
 
-Runs on the homelab's Docker VM (VM 300) at `:4200`, LAN-only and unauthenticated by design.
+Meant for a private network: there is no authentication. The repo holds no environment-specific
+values — every endpoint and name is configured through environment variables (see below).
 
 ## Develop
 
@@ -25,13 +26,13 @@ Architecture and working rules: **[AGENTS.md](./AGENTS.md)**.
 For machine callers such as Hermes. The board itself uses GraphQL at `/graphql`.
 
 ```bash
-curl -X POST http://docker-host:4200/api/ideas -H 'content-type: application/json' \
+curl -X POST http://localhost:4000/api/ideas -H 'content-type: application/json' \
   -d '{"text": "ping me when a tracked grocery item gets cheaper", "source": "SLACK"}'
-# → 201 {"id": "…", "title": "Grocery Price Drop Notification", …, "url": "http://docker-host:4200/?idea=…"}
+# → 201 {"id": "…", "title": "Grocery Price Drop Notification", …, "url": "http://localhost:4000/?idea=…"}
 
-curl http://docker-host:4200/api/ideas        # newest first
-curl http://docker-host:4200/api/ideas/<id>
-curl http://docker-host:4200/healthz
+curl http://localhost:4000/api/ideas        # newest first
+curl http://localhost:4000/api/ideas/<id>
+curl http://localhost:4000/healthz
 ```
 
 The title model names the idea from `text` unless `title` is given; if the model is unreachable the
@@ -39,13 +40,22 @@ idea is still saved, with `"title": null`, and can be titled later from the boar
 `SLACK` or `API` (default); `sourceUrl` can carry the Slack permalink. Errors are JSON with a 4xx
 status.
 
-The title model is any OpenAI-compatible endpoint, set by `TITLE_MODEL_BASE_URL` (the deployed
-stack defaults it to CT 120, `http://llamacpp.lan:1234/v1`). Unset, which is the default for
-`pnpm dev`, ideas stay untitled. A title takes about half a second, so capture waits for it, up to
-`TITLE_MODEL_TIMEOUT_MS` (10 s).
-
-`url` is built from `PUBLIC_URL` when set, otherwise from the `Host` the caller used. Set
+`url` is built from `PUBLIC_URL` when set, otherwise from the `Host` the caller used — so set
 `PUBLIC_URL` to the address you browse to if callers use a name your devices can't resolve.
+
+## Configuration
+
+| Variable                 | Default              | Purpose                                                                                                                             |
+| ------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `TITLE_MODEL_BASE_URL`   | unset                | OpenAI-compatible endpoint (`…/v1`) that titles new ideas: llama.cpp, LM Studio, Ollama or a hosted API. Unset: ideas stay untitled |
+| `TITLE_MODEL`            | unset                | Model name, for servers that need one (llama.cpp ignores it)                                                                        |
+| `TITLE_MODEL_API_KEY`    | unset                | Sent as a bearer token, for servers that need one                                                                                   |
+| `TITLE_MODEL_TIMEOUT_MS` | `10000`              | How long capture waits for a title before saving the idea untitled                                                                  |
+| `PUBLIC_URL`             | unset                | Base of the links the REST API returns; unset uses the caller's `Host`                                                              |
+| `DATABASE_URL`           | `file:./data/app.db` | SQLite (libsql) location                                                                                                            |
+
+A local model titles an idea in well under a second, so capture waits for it. In Docker, use full
+hostnames or IPs: the embedded resolver may not resolve single-label names.
 
 ## Deploy
 

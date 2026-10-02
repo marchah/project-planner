@@ -53,8 +53,8 @@ at `/api/*`** for machine callers. It calls the same services as the resolvers, 
 role that the layer rule treats like a resolver (no db, no repository). The scheduler for research
 and refresh (§5) will run in-process, the way MealDeal's `INGEST_CRON` does.
 
-**Titles come from a model, at capture.** The API asks CT 120's llama.cpp directly
-(OpenAI-compatible, `TITLE_MODEL_BASE_URL`) for a title of at most 8 words. It is not a Hermes run:
+**Titles come from a model, at capture.** The API asks an OpenAI-compatible endpoint directly
+(`TITLE_MODEL_BASE_URL`; here, CT 120's llama.cpp) for a title of at most 8 words. It is not a Hermes run:
 a title needs no tools, and it takes 0.3–0.7 s on CT 120 (measured from VM 300 on five ideas of
 different shapes) against ~16 s for even a trivial `/v1/runs` round trip, so capture can wait for it
 and the Slack reply can quote it. If the model is unreachable the idea is saved untitled and can be
@@ -225,12 +225,14 @@ question badge and a red corner when research failed, and refresh/mute buttons.
   `main` (`main` + `sha-<short>` tags).
 - **Compose:** [`deploy/compose.yaml`](../deploy/compose.yaml), deployed as a Portainer git stack.
   `pull_policy: always`, healthcheck on `/healthz`, one named volume, host port 4200.
-  `dns: [192.168.1.1]` is set for when step 2 makes the container call `hermes` (MealDeal's
-  single-label-name fix).
-- **Stack env (Portainer):** none needed today: `TITLE_MODEL_BASE_URL` defaults to
-  `http://llamacpp.lan:1234/v1` in the compose file. Step 2 adds `HERMES_API_URL=http://hermes:8642`,
-  `HERMES_API_KEY` (the value of CT 121's `API_SERVER_KEY`, which Hermes itself requires) and
-  `HERMES_PROVIDER` (empty = gateway default).
+- **No environment-specific values in this repo.** The compose file passes every endpoint through
+  from the stack's env vars with an empty default; the homelab's values are recorded in the Proxmox
+  repo's `docker-host/README.md`. Use full hostnames (`<host>.lan`) or IPs: on VM 300, Docker's
+  resolver returns `ENOTFOUND` for single-label names on a compose network, while `.lan` names
+  resolve (tested 2026-10-02), so the stack needs no `dns:` override.
+- **Stack env (Portainer):** `PUBLIC_URL` and `TITLE_MODEL_BASE_URL` today. Step 2 adds
+  `HERMES_API_URL`, `HERMES_API_KEY` (the value of CT 121's `API_SERVER_KEY`, which Hermes itself
+  requires) and `HERMES_PROVIDER` (empty = gateway default).
 - **Backups:** the volume is the only copy of your ideas and answers. VM 300's weekly vzdump covers
   it; also list it under Backups in the Proxmox repo's `docker-host/README.md`, which backs up
   Docker volumes separately so a restore doesn't roll back the whole VM.

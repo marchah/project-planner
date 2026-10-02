@@ -4,8 +4,19 @@ import { cleanTitle, titleModelAdapterFactory } from './adapter';
 const config = {
   TITLE_MODEL_BASE_URL: 'http://model:1234/v1',
   TITLE_MODEL: 'test-model',
+  TITLE_MODEL_API_KEY: undefined,
   TITLE_MODEL_TIMEOUT_MS: 1000,
 };
+
+function sentRequest(fetchMock: ReturnType<typeof stubCompletion>) {
+  const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+  return {
+    url,
+    init,
+    headers: init.headers as Record<string, string>,
+    body: JSON.parse(init.body as string) as { model?: string; messages: { content: string }[] },
+  };
+}
 
 function stubCompletion(body: unknown, status = 200) {
   const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status })));
@@ -50,15 +61,22 @@ describe('titleModelAdapter', () => {
     await expect(adapter.generateIdeaTitle('left for dead 2 style game')).resolves.toBe(
       'Left For Dead 2 Style Online Multiplayer Game',
     );
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const { url, init, headers, body } = sentRequest(fetchMock);
     expect(url).toBe('http://model:1234/v1/chat/completions');
-    const sent = JSON.parse(init.body as string) as {
-      model: string;
-      messages: { content: string }[];
-    };
-    expect(sent.model).toBe('test-model');
-    expect(sent.messages.at(-1)?.content).toBe('left for dead 2 style game');
+    expect(body.model).toBe('test-model');
+    expect(body.messages.at(-1)?.content).toBe('left for dead 2 style game');
+    expect(headers.authorization).toBeUndefined();
     expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('sends a key only when one is set, and leaves the model out when none is named', async () => {
+    const fetchMock = stubCompletion(completion('Shared Grocery List'));
+    await titleModelAdapterFactory({
+      config: { ...config, TITLE_MODEL: undefined, TITLE_MODEL_API_KEY: 'sk-test' },
+    }).generateIdeaTitle('x');
+    const { headers, body } = sentRequest(fetchMock);
+    expect(headers.authorization).toBe('Bearer sk-test');
+    expect(body).not.toHaveProperty('model');
   });
 
   it('names the address and the cause when the model cannot be reached', async () => {

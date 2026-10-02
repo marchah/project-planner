@@ -22,7 +22,8 @@ const ChatCompletion = z.object({
 
 export interface TitleModelConfig {
   TITLE_MODEL_BASE_URL: string | undefined;
-  TITLE_MODEL: string;
+  TITLE_MODEL: string | undefined;
+  TITLE_MODEL_API_KEY: string | undefined;
   TITLE_MODEL_TIMEOUT_MS: number;
 }
 
@@ -38,7 +39,7 @@ export function cleanTitle(raw: string): Maybe<string> {
   return title;
 }
 
-// Any OpenAI-compatible chat endpoint; in the homelab, llama.cpp on CT 120.
+// Any OpenAI-compatible chat endpoint: llama.cpp, LM Studio, Ollama, or a hosted API with a key.
 export function titleModelAdapterFactory({
   config,
 }: {
@@ -49,9 +50,15 @@ export function titleModelAdapterFactory({
     const url = `${config.TITLE_MODEL_BASE_URL}/chat/completions`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        ...(config.TITLE_MODEL_API_KEY && {
+          authorization: `Bearer ${config.TITLE_MODEL_API_KEY}`,
+        }),
+      },
       body: JSON.stringify({
-        model: config.TITLE_MODEL,
+        // Single-model servers such as llama.cpp ignore the name; hosted APIs require it.
+        ...(config.TITLE_MODEL && { model: config.TITLE_MODEL }),
         temperature: 0.2,
         max_tokens: 40,
         messages: [
