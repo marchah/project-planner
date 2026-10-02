@@ -58,9 +58,7 @@ and refresh (§5) will run in-process, the way MealDeal's `INGEST_CRON` does.
 a title needs no tools, and it takes 0.3–0.7 s on CT 120 (measured from VM 300 on five ideas of
 different shapes) against ~16 s for even a trivial `/v1/runs` round trip, so capture can wait for it
 and the Slack reply can quote it. If the model is unreachable the idea is saved untitled and can be
-titled from the board later; a capture is never lost to the title. Titles keep the idea's language,
-in Title Case — which reads oddly in French ("Application De Partage De Courses"), and asking the
-model for that language's own capitalisation was ignored in testing.
+titled from the board later; a capture is never lost to the title.
 
 ### 2.2 Capture — a Slack `#ideas` channel on the existing Hermes gateway
 
