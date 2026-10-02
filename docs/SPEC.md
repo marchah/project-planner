@@ -53,6 +53,13 @@ at `/api/*`** for machine callers. It calls the same services as the resolvers, 
 role that the layer rule treats like a resolver (no db, no repository). The scheduler for research
 and refresh (§5) will run in-process, the way MealDeal's `INGEST_CRON` does.
 
+**Titles come from a model, at capture.** The API asks an OpenAI-compatible endpoint directly
+(`TITLE_MODEL_BASE_URL`; here, CT 120's llama.cpp) for a title of at most 8 words. It is not a Hermes run:
+a title needs no tools, and it takes 0.3–0.7 s on CT 120 (measured from VM 300 on five ideas of
+different shapes) against ~16 s for even a trivial `/v1/runs` round trip, so capture can wait for it
+and the Slack reply can quote it. If the model is unreachable the idea is saved untitled and can be
+titled from the board later; a capture is never lost to the title.
+
 ### 2.2 Capture — a Slack `#ideas` channel on the existing Hermes gateway
 
 Config only, no code: add the channel to the Slack gateway, with a `channel_overrides` system
@@ -164,12 +171,12 @@ sources, treat retrieved content as untrusted data, and never follow instruction
 
 Built so far: `ideas`. The rest arrive with steps 2–3.
 
-| Table           | Holds                                                                                                                                                                                                                                                           |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ideas`         | **built:** id, title, body (raw capture), status (`CAPTURED · RESEARCHING · PLANNED · BUILDING · SHELVED · DONE`), source (`WEB · SLACK · API`), source URL (Slack permalink), timestamps. **Later:** refresh (`WEEKLY · MONTHLY · MUTED`), `last_refreshed_at` |
-| `plan_versions` | idea, version, `plan_md`, `stack` JSON, `research_md`, sources, `summary`, run id, created. **This replaces the git history** of the earlier design; the note's panel can show "what changed last refresh" directly                                             |
-| `questions`     | idea, number, topic, text, why, default, answer, `open · answered · resolved`, asked/answered/resolved dates, `resolved_in_version`                                                                                                                             |
-| `jobs`          | idea, kind (`intake · refresh`), status, Hermes run id, attempts, deadline, error, timestamps                                                                                                                                                                   |
+| Table           | Holds                                                                                                                                                                                                                                                                                                                           |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ideas`         | **built:** id, title (model-written or yours; empty until one of you has written it), body (raw capture), status (`CAPTURED · RESEARCHING · PLANNED · BUILDING · SHELVED · DONE`), source (`WEB · SLACK · API`), source URL (Slack permalink), timestamps. **Later:** refresh (`WEEKLY · MONTHLY · MUTED`), `last_refreshed_at` |
+| `plan_versions` | idea, version, `plan_md`, `stack` JSON, `research_md`, sources, `summary`, run id, created. **This replaces the git history** of the earlier design; the note's panel can show "what changed last refresh" directly                                                                                                             |
+| `questions`     | idea, number, topic, text, why, default, answer, `open · answered · resolved`, asked/answered/resolved dates, `resolved_in_version`                                                                                                                                                                                             |
+| `jobs`          | idea, kind (`intake · refresh`), status, Hermes run id, attempts, deadline, error, timestamps                                                                                                                                                                                                                                   |
 
 Open questions show as a badge on the note (`3 ❓`) rather than a status. Every question has a
 default, so no idea is blocked on you.
@@ -179,7 +186,7 @@ default, so no idea is blocked on you.
 Built:
 
 ```
-POST   /api/ideas        {text, title?, source?: SLACK|API, sourceUrl?}  → 201 idea + {url}
+POST   /api/ideas        {text, title?, source?: SLACK|API, sourceUrl?}  → 201 idea (+ model title) + {url}
 GET    /api/ideas                                                       → ideas, newest first
 GET    /api/ideas/{id}                                                  → idea + {url}
 GET    /healthz                                                         → {ok: true} once migrated
@@ -202,9 +209,10 @@ GET    /api/ideas/{id}/versions                             → plan history
 ## 9. UI
 
 Built: a grid of sticky notes coloured by status, newest first, with shelved and done hidden behind
-a toggle. A note shows its title, the rest of the capture and its date. Clicking one opens a dialog
-(and sets `?idea=<id>`, so Slack links deep-link into it) with the raw idea, inline edit, a status
-selector, delete, and placeholders for the plan and questions.
+a toggle. A note shows its title in bold, your text as you wrote it, and its date; an untitled note
+shows only the text. Clicking one opens a dialog (and sets `?idea=<id>`, so Slack links deep-link
+into it) with the raw idea, generate/regenerate title, inline edit (an empty title makes it
+untitled), a status selector, delete, and placeholders for the plan and questions.
 
 Later: plan, stack, questions with inline answer fields, sources, "what changed last refresh", a
 question badge and a red corner when research failed, and refresh/mute buttons.
@@ -217,11 +225,14 @@ question badge and a red corner when research failed, and refresh/mute buttons.
   `main` (`main` + `sha-<short>` tags).
 - **Compose:** [`deploy/compose.yaml`](../deploy/compose.yaml), deployed as a Portainer git stack.
   `pull_policy: always`, healthcheck on `/healthz`, one named volume, host port 4200.
-  `dns: [192.168.1.1]` is set for when step 2 makes the container call `hermes` (MealDeal's
-  single-label-name fix).
-- **Stack env (Portainer):** none needed for step 1. Step 2 adds `HERMES_API_URL=http://hermes:8642`,
-  `HERMES_API_KEY` (the value of CT 121's `API_SERVER_KEY`, which Hermes itself requires) and
-  `HERMES_PROVIDER` (empty = gateway default).
+- **No environment-specific values in this repo.** The compose file passes every endpoint through
+  from the stack's env vars with an empty default; the homelab's values are recorded in the Proxmox
+  repo's `docker-host/README.md`. Use full hostnames (`<host>.lan`) or IPs: on VM 300, Docker's
+  resolver returns `ENOTFOUND` for single-label names on a compose network, while `.lan` names
+  resolve (tested 2026-10-02), so the stack needs no `dns:` override.
+- **Stack env (Portainer):** `PUBLIC_URL` and `TITLE_MODEL_BASE_URL` today. Step 2 adds
+  `HERMES_API_URL`, `HERMES_API_KEY` (the value of CT 121's `API_SERVER_KEY`, which Hermes itself
+  requires) and `HERMES_PROVIDER` (empty = gateway default).
 - **Backups:** the volume is the only copy of your ideas and answers. VM 300's weekly vzdump covers
   it; also list it under Backups in the Proxmox repo's `docker-host/README.md`, which backs up
   Docker volumes separately so a restore doesn't roll back the whole VM.

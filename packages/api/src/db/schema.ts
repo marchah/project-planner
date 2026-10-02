@@ -11,7 +11,7 @@ const now = sql`(unixepoch() * 1000)`;
 
 export const ideas = sqliteTable('ideas', {
   id: text('id').primaryKey(),
-  title: text('title').notNull(),
+  title: text('title'),
   body: text('body').notNull(),
   status: text('status').$type<IdeaStatus>().notNull().default(IdeaStatus.CAPTURED),
   source: text('source').$type<IdeaSource>().notNull().default(IdeaSource.WEB),

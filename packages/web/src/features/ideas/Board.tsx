@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from 'urql';
 import { graphql } from '../../graphql';
 import { cn } from '../../lib/utils';
-import { ARCHIVED_STATUSES, STATUS_META, formatDate, noteText } from './status';
+import { ARCHIVED_STATUSES, STATUS_META, formatDate } from './status';
 
 export const BoardQuery = graphql(`
   query Board {
@@ -60,7 +60,6 @@ export function Board({ onOpen }: { onOpen: (id: string) => void }) {
         <ul className="grid grid-cols-2 gap-4 sm:grid-cols-[repeat(auto-fill,minmax(13rem,1fr))] sm:gap-6">
           {visible.map((idea, index) => {
             const meta = STATUS_META[idea.status];
-            const text = noteText(idea.title, idea.body);
             return (
               <li key={idea.id}>
                 <button
@@ -72,13 +71,18 @@ export function Board({ onOpen }: { onOpen: (id: string) => void }) {
                     TILTS[index % TILTS.length],
                   )}
                 >
-                  {/* One clamped block, so a long title and its continuation never lose text between them. */}
-                  <span className="line-clamp-5 whitespace-pre-line text-sm text-stone-700 sm:line-clamp-7">
-                    <span className="text-base font-semibold leading-snug text-stone-900">
-                      {text.lead}
-                    </span>
-                    {text.continuation}
-                    {text.rest ? `\n${text.rest}` : null}
+                  {idea.title ? (
+                    <span className="line-clamp-3 font-semibold leading-snug">{idea.title}</span>
+                  ) : null}
+                  <span
+                    className={cn(
+                      'whitespace-pre-line text-sm text-stone-700',
+                      idea.title
+                        ? 'mt-1.5 line-clamp-2 sm:line-clamp-5'
+                        : 'line-clamp-5 text-stone-900 sm:line-clamp-8',
+                    )}
+                  >
+                    {idea.body}
                   </span>
                   <span className="mt-auto flex items-center justify-between pt-2 text-xs text-stone-600">
                     <span className={cn('rounded px-1.5 py-0.5 font-medium', meta.chip)}>

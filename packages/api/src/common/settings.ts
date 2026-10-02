@@ -6,6 +6,15 @@ import { z } from 'zod';
 // so they visibly mirror the environment variables. Validated once at startup so a
 // misconfigured deploy fails fast with a clear message.
 
+// An empty variable means unset, so a compose file can pass `${VAR:-}` through without a default.
+function optional<T extends z.ZodType>(schema: T) {
+  return z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+}
+
+function stripTrailingSlash(url: string): string {
+  return url.replace(/\/+$/, '');
+}
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).default('info'),
@@ -13,14 +22,14 @@ const EnvSchema = z.object({
   WEB_DIR: z.string().optional(),
   DATABASE_URL: z.string().default('file:./data/app.db'),
   MIGRATIONS_DIR: z.string().default('drizzle'),
+  // OpenAI-compatible endpoint that names new ideas (…/v1). Unset: ideas stay untitled until you
+  // name them. The model name and key are only needed by servers that ask for them.
+  TITLE_MODEL_BASE_URL: optional(z.url().transform(stripTrailingSlash)),
+  TITLE_MODEL: optional(z.string()),
+  TITLE_MODEL_API_KEY: optional(z.string()),
+  TITLE_MODEL_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   // Base for links handed to machine callers; defaults to the Host header they reached us on.
-  PUBLIC_URL: z.preprocess(
-    (value) => (value === '' ? undefined : value),
-    z
-      .url()
-      .transform((url) => url.replace(/\/+$/, ''))
-      .optional(),
-  ),
+  PUBLIC_URL: optional(z.url().transform(stripTrailingSlash)),
 });
 
 // eslint-disable-next-line no-restricted-properties -- the one allowed read of process.env
@@ -34,6 +43,10 @@ export const settings = {
   DATABASE_URL: ENV.DATABASE_URL,
   MIGRATIONS_DIR: ENV.MIGRATIONS_DIR,
   PUBLIC_URL: ENV.PUBLIC_URL,
+  TITLE_MODEL_BASE_URL: ENV.TITLE_MODEL_BASE_URL,
+  TITLE_MODEL: ENV.TITLE_MODEL,
+  TITLE_MODEL_API_KEY: ENV.TITLE_MODEL_API_KEY,
+  TITLE_MODEL_TIMEOUT_MS: ENV.TITLE_MODEL_TIMEOUT_MS,
 };
 
 export type Settings = typeof settings;

@@ -4,7 +4,7 @@ import { settings } from './settings';
 // Structured logging — use these instead of console.* (ESLint enforces no-console).
 // Pretty + colorized in development, JSON in production, silent in tests unless LOG_LEVEL=debug.
 
-export type LoggingTag = 'SERVER' | 'DB' | 'REST';
+export type LoggingTag = 'SERVER' | 'DB' | 'REST' | 'TITLE';
 
 interface LogOptions {
   extra?: Record<string, unknown>;

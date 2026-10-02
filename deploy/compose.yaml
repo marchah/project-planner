@@ -6,8 +6,8 @@
 #     Reference:       refs/heads/main
 #     Compose path:    deploy/compose.yaml
 #
-# Public repo + public GHCR package: no git or registry credentials needed. Nothing secret lives
-# here; step-2 Hermes settings arrive as Portainer stack env vars and default to empty.
+# Public repo + public GHCR package: no git or registry credentials needed. Nothing secret or
+# environment-specific lives here: set the env vars below on the Portainer stack.
 #
 # `pull_policy: always` makes a redeploy fetch the moving `main` tag instead of reusing a stale
 # local image. To roll back, pin an immutable tag: ghcr.io/marchah/project-planner:sha-<short>
@@ -18,10 +18,6 @@ services:
     pull_policy: always
     container_name: project-planner
     restart: unless-stopped
-    # Docker's embedded resolver forwards to the VM's systemd-resolved stub, which refuses
-    # single-label names — so `hermes` would never resolve without this.
-    dns:
-      - 192.168.1.1
     ports:
       - '${PROJECT_PLANNER_PORT:-4200}:4000'
     volumes:
@@ -30,10 +26,16 @@ services:
     environment:
       DATABASE_URL: file:/data/app.db
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      # Base of the links in REST responses, i.e. the link Hermes posts back to Slack. Empty = the
-      # Host header the caller used. Hermes calls `docker-host`, which not every browser on the LAN
-      # resolves, so set this to the address you actually open the board with.
+      # Everything environment-specific comes from the stack's env vars; nothing is defaulted here.
+      # Use full hostnames (host.lan, an IP): Docker's resolver may not resolve single-label names.
+      #
+      # Base of the links the REST API returns. Empty: the Host header the caller used.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # OpenAI-compatible endpoint (…/v1) that titles new ideas. Empty: ideas are saved untitled.
+      TITLE_MODEL_BASE_URL: ${TITLE_MODEL_BASE_URL:-}
+      # Only for servers that need them (hosted APIs); llama.cpp ignores the model name.
+      TITLE_MODEL: ${TITLE_MODEL:-}
+      TITLE_MODEL_API_KEY: ${TITLE_MODEL_API_KEY:-}
     healthcheck:
       test:
         - CMD-SHELL

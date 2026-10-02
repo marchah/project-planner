@@ -63,7 +63,7 @@ export function CaptureForm() {
         onKeyDown={onKeyDown}
         rows={2}
         maxLength={20_000}
-        placeholder="New idea — the first line becomes its title (⌘/Ctrl + Enter to add)"
+        placeholder="New idea — describe it however you like; a title is written for it (⌘/Ctrl + Enter to add)"
         className="min-h-16 flex-1 resize-y rounded-md border bg-background p-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       />
       <Button type="submit" disabled={!text.trim() || fetching} className="sm:h-16">

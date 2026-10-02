@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { deriveIdeaTitle, ideaServiceFactory } from './service';
-import { IdeaSource, IdeaStatus, type Idea, type IdeaRepository } from './types';
+import { ideaServiceFactory } from './service';
+import {
+  IdeaSource,
+  IdeaStatus,
+  type Idea,
+  type IdeaRepository,
+  type IdeaTitleGenerator,
+} from './types';
 
 const makeIdea = (over: Partial<Idea> = {}): Idea => ({
   id: 'i1',
-  title: 'Price-drop notifier',
-  body: 'Price-drop notifier\nPing me when groceries get cheaper.',
+  title: 'Price-Drop Notifier',
+  body: 'Ping me when groceries get cheaper.',
   status: IdeaStatus.CAPTURED,
   source: IdeaSource.WEB,
   sourceUrl: null,
@@ -14,9 +20,10 @@ const makeIdea = (over: Partial<Idea> = {}): Idea => ({
   ...over,
 });
 
-function makeService(over: { ideas?: Idea[] } = {}) {
+function makeService(over: { ideas?: Idea[]; titleGenerator?: IdeaTitleGenerator } = {}) {
   const rows = over.ideas ?? [makeIdea()];
   const created: Idea[] = [];
+  const titledFrom: string[] = [];
 
   const ideaRepository: IdeaRepository = {
     findIdeaById: (id) => Promise.resolve(rows.find((idea) => idea.id === id) ?? null),
@@ -33,60 +40,68 @@ function makeService(over: { ideas?: Idea[] } = {}) {
     deleteIdea: (id) => Promise.resolve(rows.find((idea) => idea.id === id) ?? null),
   };
 
-  return { service: ideaServiceFactory({ ideaRepository }), created };
+  const titleGenerator: IdeaTitleGenerator = over.titleGenerator ?? {
+    generateIdeaTitle: (text) => {
+      titledFrom.push(text);
+      return Promise.resolve('Generated Title');
+    },
+  };
+
+  return { service: ideaServiceFactory({ ideaRepository, titleGenerator }), created, titledFrom };
 }
 
-describe('deriveIdeaTitle', () => {
-  it('uses the first non-empty line', () => {
-    expect(deriveIdeaTitle('\n\n  Grocery watcher  \nmore detail')).toBe('Grocery watcher');
-  });
-
-  it('truncates a long line at a word boundary', () => {
-    const text =
-      "left for dead 2 style game online multiplayer using Vercel and Supabase with different 'room' you can enter";
-    expect(deriveIdeaTitle(text)).toBe(
-      'left for dead 2 style game online multiplayer using Vercel and Supabase with…',
-    );
-  });
-
-  it('cuts a single huge word where it falls', () => {
-    const title = deriveIdeaTitle('x'.repeat(200));
-    expect(title).toHaveLength(80);
-    expect(title.endsWith('…')).toBe(true);
-  });
-});
+const failing: IdeaTitleGenerator = {
+  generateIdeaTitle: () => Promise.reject(new Error('connect ECONNREFUSED')),
+};
+const unconfigured: IdeaTitleGenerator = { generateIdeaTitle: () => Promise.resolve(null) };
 
 describe('ideaService', () => {
-  it('derives a title from the text when none is given', async () => {
-    const { service } = makeService();
+  it('names a capture with the title model, from the trimmed text', async () => {
+    const { service, titledFrom } = makeService();
     const idea = await service.captureIdea({
-      text: '  A board for ideas\nwith sticky notes  ',
+      text: '  a board for ideas\nwith sticky notes  ',
       title: null,
       source: IdeaSource.SLACK,
       sourceUrl: 'https://example.slack.com/archives/C1/p1',
     });
-    expect(idea.title).toBe('A board for ideas');
-    expect(idea.body).toBe('A board for ideas\nwith sticky notes');
-    expect(idea.source).toBe(IdeaSource.SLACK);
+    expect(idea.title).toBe('Generated Title');
+    expect(idea.body).toBe('a board for ideas\nwith sticky notes');
+    expect(titledFrom).toEqual(['a board for ideas\nwith sticky notes']);
   });
 
-  it('prefers an explicit title', async () => {
-    const { service } = makeService();
+  it('keeps an explicit title and skips the model', async () => {
+    const { service, titledFrom } = makeService();
     const idea = await service.captureIdea({
       text: 'body',
       title: '  Named  ',
-      source: IdeaSource.WEB,
+      source: IdeaSource.API,
       sourceUrl: null,
     });
     expect(idea.title).toBe('Named');
+    expect(titledFrom).toHaveLength(0);
   });
 
-  it('rejects blank text without persisting', async () => {
-    const { service, created } = makeService();
+  it('still saves the idea, untitled, when the model fails or is not configured', async () => {
+    for (const titleGenerator of [failing, unconfigured]) {
+      const { service, created } = makeService({ titleGenerator });
+      const idea = await service.captureIdea({
+        text: 'keep me',
+        title: null,
+        source: IdeaSource.WEB,
+        sourceUrl: null,
+      });
+      expect(idea.title).toBeNull();
+      expect(created).toHaveLength(1);
+    }
+  });
+
+  it('rejects blank text without persisting or calling the model', async () => {
+    const { service, created, titledFrom } = makeService();
     await expect(
       service.captureIdea({ text: '   ', title: null, source: IdeaSource.WEB, sourceUrl: null }),
     ).rejects.toThrow('An idea needs some text');
     expect(created).toHaveLength(0);
+    expect(titledFrom).toHaveLength(0);
   });
 
   it('throws NotFoundError for a missing id', async () => {
@@ -96,18 +111,33 @@ describe('ideaService', () => {
       'No idea with id nope',
     );
     await expect(service.deleteIdea('nope')).rejects.toThrow('No idea with id nope');
+    await expect(service.generateTitleForIdea('nope')).rejects.toThrow('No idea with id nope');
   });
 
-  it('trims edits and refuses to blank a title', async () => {
+  it('trims a title edit, and an empty title clears it', async () => {
     const { service } = makeService();
-    const idea = await service.updateIdea('i1', {
+    const renamed = await service.updateIdea('i1', {
       title: '  Renamed ',
       status: IdeaStatus.SHELVED,
     });
-    expect(idea.title).toBe('Renamed');
-    expect(idea.status).toBe(IdeaStatus.SHELVED);
-    await expect(service.updateIdea('i1', { title: '  ' })).rejects.toThrow(
-      'A title cannot be empty',
-    );
+    expect(renamed.title).toBe('Renamed');
+    expect(renamed.status).toBe(IdeaStatus.SHELVED);
+    expect((await service.updateIdea('i1', { title: '  ' })).title).toBeNull();
+  });
+
+  it('regenerates a title on request, from the idea text', async () => {
+    const { service, titledFrom } = makeService({ ideas: [makeIdea({ title: null })] });
+    const idea = await service.generateTitleForIdea('i1');
+    expect(idea.title).toBe('Generated Title');
+    expect(titledFrom).toEqual(['Ping me when groceries get cheaper.']);
+  });
+
+  it('reports an unavailable model when regenerating', async () => {
+    await expect(
+      makeService({ titleGenerator: failing }).service.generateTitleForIdea('i1'),
+    ).rejects.toThrow('could not be reached');
+    await expect(
+      makeService({ titleGenerator: unconfigured }).service.generateTitleForIdea('i1'),
+    ).rejects.toThrow('No title model is configured');
   });
 });
