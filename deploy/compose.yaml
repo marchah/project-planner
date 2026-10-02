@@ -34,6 +34,10 @@ services:
       # Host header the caller used. Hermes calls `docker-host`, which not every browser on the LAN
       # resolves, so set this to the address you actually open the board with.
       PUBLIC_URL: ${PUBLIC_URL:-}
+      # Names each new idea (~0.5 s). Any OpenAI-compatible endpoint; CT 120's llama.cpp by default.
+      # Unreachable or empty: ideas are saved untitled and can be titled from the board later.
+      TITLE_MODEL_BASE_URL: ${TITLE_MODEL_BASE_URL-http://llamacpp.lan:1234/v1}
+      TITLE_MODEL: ${TITLE_MODEL:-qwen3.6-35b-a3b}
     healthcheck:
       test:
         - CMD-SHELL

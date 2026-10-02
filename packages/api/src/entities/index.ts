@@ -11,11 +11,15 @@ export interface EntitiesServices {
 
 export function getEntitiesServices({
   db,
+  thirdParty,
 }: {
   db: Db;
   thirdParty: ThirdPartyServices;
 }): EntitiesServices {
-  const ideaService = ideaServiceFactory({ ideaRepository: ideaRepositoryFactory({ db }) });
+  const ideaService = ideaServiceFactory({
+    ideaRepository: ideaRepositoryFactory({ db }),
+    titleGenerator: thirdParty.titleGenerator,
+  });
 
   return { ideaService };
 }

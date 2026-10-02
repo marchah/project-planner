@@ -13,6 +13,17 @@ const EnvSchema = z.object({
   WEB_DIR: z.string().optional(),
   DATABASE_URL: z.string().default('file:./data/app.db'),
   MIGRATIONS_DIR: z.string().default('drizzle'),
+  // OpenAI-compatible endpoint that names new ideas, e.g. http://llamacpp.lan:1234/v1. Unset: ideas
+  // stay untitled until you name them.
+  TITLE_MODEL_BASE_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z
+      .url()
+      .transform((url) => url.replace(/\/+$/, ''))
+      .optional(),
+  ),
+  TITLE_MODEL: z.string().min(1).default('qwen3.6-35b-a3b'),
+  TITLE_MODEL_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
   // Base for links handed to machine callers; defaults to the Host header they reached us on.
   PUBLIC_URL: z.preprocess(
     (value) => (value === '' ? undefined : value),
@@ -34,6 +45,9 @@ export const settings = {
   DATABASE_URL: ENV.DATABASE_URL,
   MIGRATIONS_DIR: ENV.MIGRATIONS_DIR,
   PUBLIC_URL: ENV.PUBLIC_URL,
+  TITLE_MODEL_BASE_URL: ENV.TITLE_MODEL_BASE_URL,
+  TITLE_MODEL: ENV.TITLE_MODEL,
+  TITLE_MODEL_TIMEOUT_MS: ENV.TITLE_MODEL_TIMEOUT_MS,
 };
 
 export type Settings = typeof settings;

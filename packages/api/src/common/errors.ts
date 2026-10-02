@@ -73,6 +73,14 @@ export class ValidationError<Data = ErrorData> extends ServerError<Data> {
   }
 }
 
+export class ServiceUnavailableError<Data = ErrorData> extends ServerError<Data> {
+  constructor(message?: string, data?: Data) {
+    super(message ?? 'Service unavailable', data);
+    this.status = 503;
+    this.name = 'ServiceUnavailableError';
+  }
+}
+
 export class TooManyRequestsError<Data = ErrorData> extends ServerError<Data> {
   constructor(message?: string, data?: Data) {
     super(message ?? 'Too many requests', data);

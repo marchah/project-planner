@@ -132,8 +132,9 @@ Destructure only the entity operations it uses, and test it with partial mocks o
 
 1. **Declare the port in the slice that needs it**, in its `types.ts` — the contract belongs to the
    consumer, not the provider.
-2. Implement it under `third-party/<provider>/`. Validate the response with Zod, and give every call
-   a timeout.
+2. Implement it under `third-party/<provider>/` — `third-party/title-model/` is the worked example.
+   Validate the response with Zod, give every call a timeout, and put the real cause in the error
+   message (`fetch` reports every network failure as just "fetch failed").
 3. Build it in **`third-party/index.ts`** and inject it where it is consumed, in that module's
    `index.ts`. The slice sees only the port.
 4. Any credentials/URLs go through `common/settings.ts` like every other env var.
@@ -232,5 +233,6 @@ here`) reads as helpful context and is still history.
 ## Files to read first
 
 `entities/idea/{types,repository,service,schema.pothos,routes,service.spec,routes.spec}.ts` (the entity
-template) · `entities/index.ts` · `services.ts` (composition root) · `context.ts` · `rest.ts` +
+template) · `third-party/title-model/{adapter,adapter.spec}.ts` (the adapter template) ·
+`entities/index.ts` · `services.ts` (composition root) · `context.ts` · `rest.ts` +
 `common/rest.ts` (REST) · `builder.ts` · `eslint.config.js` (the enforced boundaries).

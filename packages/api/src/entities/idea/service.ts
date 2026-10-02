@@ -1,27 +1,21 @@
-import { NotFoundError, ValidationError } from '../../common/errors';
+import { NotFoundError, ServiceUnavailableError, ValidationError } from '../../common/errors';
+import { logException } from '../../common/logger';
 import type { Maybe } from '../../common/types';
-import type { CaptureIdeaInput, Idea, IdeaPatch, IdeaRepository, IdeaService } from './types';
-
-export const TITLE_MAX_LENGTH = 80;
-
-export function deriveIdeaTitle(text: string): string {
-  const firstLine =
-    text
-      .split('\n')
-      .find((line) => line.trim().length > 0)
-      ?.trim() ?? '';
-  if (firstLine.length <= TITLE_MAX_LENGTH) return firstLine;
-  const cut = firstLine.slice(0, TITLE_MAX_LENGTH - 1);
-  const lastSpace = cut.lastIndexOf(' ');
-  // Only break at a space that keeps most of the line; one huge word is cut where it falls.
-  const atWord = lastSpace >= TITLE_MAX_LENGTH / 2 ? cut.slice(0, lastSpace) : cut;
-  return `${atWord.trimEnd()}…`;
-}
+import type {
+  CaptureIdeaInput,
+  Idea,
+  IdeaPatch,
+  IdeaRepository,
+  IdeaService,
+  IdeaTitleGenerator,
+} from './types';
 
 export function ideaServiceFactory({
   ideaRepository,
+  titleGenerator,
 }: {
   ideaRepository: IdeaRepository;
+  titleGenerator: IdeaTitleGenerator;
 }): IdeaService {
   async function getIdeaById(id: string): Promise<Idea> {
     const idea = await ideaRepository.findIdeaById(id);
@@ -36,7 +30,7 @@ export function ideaServiceFactory({
   async function captureIdea(input: CaptureIdeaInput): Promise<Idea> {
     const body = input.text.trim();
     if (!body) throw new ValidationError('An idea needs some text');
-    const title = normalizeTitle(input.title) ?? deriveIdeaTitle(body);
+    const title = normalizeTitle(input.title) ?? (await generateTitleOrNull(body));
     return ideaRepository.createIdea({
       title,
       body,
@@ -47,11 +41,7 @@ export function ideaServiceFactory({
 
   async function updateIdea(id: string, patch: IdeaPatch): Promise<Idea> {
     const clean: IdeaPatch = { ...patch };
-    if (patch.title !== undefined) {
-      const title = normalizeTitle(patch.title);
-      if (!title) throw new ValidationError('A title cannot be empty');
-      clean.title = title;
-    }
+    if (patch.title !== undefined) clean.title = normalizeTitle(patch.title);
     if (patch.body !== undefined) {
       const body = patch.body.trim();
       if (!body) throw new ValidationError('An idea needs some text');
@@ -68,7 +58,30 @@ export function ideaServiceFactory({
     return idea;
   }
 
-  return { getIdeaById, listIdeas, captureIdea, updateIdea, deleteIdea };
+  async function generateTitleForIdea(id: string): Promise<Idea> {
+    const idea = await getIdeaById(id);
+    let title: Maybe<string>;
+    try {
+      title = await titleGenerator.generateIdeaTitle(idea.body);
+    } catch (error: unknown) {
+      logException(error, { tag: 'TITLE', extra: { ideaId: id } });
+      throw new ServiceUnavailableError('The title model could not be reached. Try again later.');
+    }
+    if (!title) throw new ServiceUnavailableError('No title model is configured.');
+    return updateIdea(id, { title });
+  }
+
+  // A capture must never be lost to the title model: on failure the idea is saved untitled.
+  async function generateTitleOrNull(body: string): Promise<Maybe<string>> {
+    try {
+      return await titleGenerator.generateIdeaTitle(body);
+    } catch (error: unknown) {
+      logException(error, { tag: 'TITLE' });
+      return null;
+    }
+  }
+
+  return { getIdeaById, listIdeas, captureIdea, updateIdea, deleteIdea, generateTitleForIdea };
 }
 
 function normalizeTitle(title: Maybe<string>): Maybe<string> {

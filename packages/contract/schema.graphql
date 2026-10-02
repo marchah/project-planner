@@ -15,7 +15,7 @@ type Idea {
   source: IdeaSource!
   sourceUrl: String
   status: IdeaStatus!
-  title: String!
+  title: String
   updatedAt: DateTime!
 }
 
@@ -37,6 +37,7 @@ enum IdeaStatus {
 type Mutation {
   captureIdea(text: String!, title: String): MutationCaptureIdeaResult!
   deleteIdea(id: ID!): MutationDeleteIdeaResult!
+  generateIdeaTitle(id: ID!): MutationGenerateIdeaTitleResult!
   updateIdea(body: String, id: ID!, status: IdeaStatus, title: String): MutationUpdateIdeaResult!
 }
 
@@ -49,6 +50,12 @@ type MutationCaptureIdeaSuccess {
 union MutationDeleteIdeaResult = MutationDeleteIdeaSuccess | NotFoundError | ServerError
 
 type MutationDeleteIdeaSuccess {
+  data: Idea!
+}
+
+union MutationGenerateIdeaTitleResult = MutationGenerateIdeaTitleSuccess | NotFoundError | ServerError | ServiceUnavailableError
+
+type MutationGenerateIdeaTitleSuccess {
   data: Idea!
 }
 
@@ -75,6 +82,11 @@ type QueryIdeaSuccess {
 }
 
 type ServerError {
+  message: String!
+  status: Int!
+}
+
+type ServiceUnavailableError {
   message: String!
   status: Int!
 }
