@@ -1,7 +1,10 @@
 import type { Maybe } from '../../common/types';
 
 export enum ResearchJobKind {
+  /** First research: no plan yet. */
   INTAKE = 'INTAKE',
+  /** Updates an existing plan with answers, decisions and anything that moved upstream. */
+  REFRESH = 'REFRESH',
 }
 
 export enum ResearchJobStatus {
@@ -21,6 +24,12 @@ export interface ResearchJob {
   attempt: number;
   /** Consecutive failures to hand the current attempt to the runner; reset once one is accepted. */
   dispatchFailures: number;
+  /** The current attempt's prompt, built when it is first handed to the runner. */
+  prompt: Maybe<string>;
+  /** Answers and decisions up to this instant are this attempt's input. */
+  inputAsOf: Maybe<Date>;
+  /** One line on what the finished job did, e.g. what a refresh changed. */
+  outcome: Maybe<string>;
   runId: Maybe<string>;
   repairUsed: boolean;
   /** A queued job is not started before this. */
@@ -39,6 +48,9 @@ export type ResearchJobPatch = Partial<
     | 'status'
     | 'attempt'
     | 'dispatchFailures'
+    | 'prompt'
+    | 'inputAsOf'
+    | 'outcome'
     | 'runId'
     | 'repairUsed'
     | 'notBefore'
@@ -61,6 +73,7 @@ export interface ResearchJobRepository {
     ideaId: string,
     kind: ResearchJobKind,
     now: Date,
+    notBefore: Date,
   ) => Promise<Maybe<ResearchJob>>;
   updateJob: (id: string, patch: ResearchJobPatch, now: Date) => Promise<Maybe<ResearchJob>>;
 }
@@ -77,6 +90,7 @@ export interface ResearchJobService {
     ideaId: string,
     kind: ResearchJobKind,
     now: Date,
+    notBefore?: Date,
   ) => Promise<{ job: ResearchJob; created: boolean }>;
   updateJob: (id: string, patch: ResearchJobPatch, now: Date) => Promise<ResearchJob>;
 }

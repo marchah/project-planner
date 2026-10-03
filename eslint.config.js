@@ -88,6 +88,7 @@ export default tseslint.config(
         },
         { category: 'route', pattern: 'packages/api/src/{entities,features}/*/routes.ts' },
         { category: 'route', pattern: 'packages/api/src/{entities,features}/*/mcp.ts' },
+        { category: 'pure', pattern: 'packages/api/src/{entities,features}/*/prompts.ts' },
         { category: 'service', pattern: 'packages/api/src/{entities,features}/*/service.ts' },
         {
           category: 'repository',
@@ -125,6 +126,20 @@ export default tseslint.config(
               disallow: { to: { file: { categories: { anyOf: ['db', 'repository'] } } } },
               message:
                 'Layer violation: REST routes and MCP tools reach data via the injected services — never import db or repository.',
+            },
+            {
+              from: { file: { categories: 'pure' } },
+              disallow: {
+                to: {
+                  file: {
+                    categories: {
+                      anyOf: ['db', 'repository', 'service', 'resolver', 'route', 'adapter'],
+                    },
+                  },
+                },
+              },
+              message:
+                'Layer violation: prompts.ts is pure — it builds and parses text and must not reach services, repositories, the db or adapters.',
             },
             {
               from: { file: { categories: 'service' } },

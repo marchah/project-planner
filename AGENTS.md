@@ -66,6 +66,7 @@ Each backend slice is a folder under `packages/api/src/{entities,features}/<slic
 | `<e>/schema.pothos.ts` | GraphQL types + resolvers                                                | `builder`, own `service`/`types`, `common`, other modules' refs | `db/`, a repository                     |
 | `<e>/routes.ts`        | REST handlers for machine callers (`RestRoute[]` from `common/rest.ts`)  | own `types`, `common`, `zod`                                    | `db/`, a repository, `node:http`        |
 | `<e>/mcp.ts`           | MCP tools registered on a server passed in by `src/mcp.ts`               | own `types`, `common`, `zod`, the MCP SDK                       | `db/`, a repository, `node:http`        |
+| `<e>/prompts.ts`       | pure text: builds an agent's prompt and parses its reply                 | `types`, `common`, `zod`                                        | a service, repository, the db, adapter  |
 | `<e>/*.spec.ts`        | Vitest unit tests                                                        | anything                                                        | —                                       |
 
 Backbone: `builder.ts` (the one Pothos builder), `entities/index.ts` + `features/index.ts` (each

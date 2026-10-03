@@ -7,11 +7,14 @@ export const IdeaResearchFragment = graphql(`
     status
     research {
       id
+      kind
       status
       attempt
       error
+      outcome
       notBefore
       startedAt
+      finishedAt
     }
     latestPlan {
       id
@@ -40,13 +43,32 @@ export const IdeaResearchFragment = graphql(`
       text
       why
       defaultAnswer
+      answer
       status
+      appliedNote
+    }
+    decisions {
+      id
+      text
+      source
+      appliedAt
+      createdAt
     }
   }
 `);
 
 export type IdeaResearch = ResultOf<typeof IdeaResearchFragment>;
+export type OnMessage = (message: string) => void;
 
 export function isResearchActive(research: Maybe<{ status: string }>): boolean {
   return research?.status === 'QUEUED' || research?.status === 'RUNNING';
+}
+
+/** The message to show for a mutation result: empty on success. */
+export function payloadError(
+  payload: { __typename: string; message?: string } | undefined,
+  fallback: string | undefined,
+): string {
+  if (payload && !payload.__typename.endsWith('Success')) return payload.message ?? 'Failed';
+  return payload ? '' : (fallback ?? 'Failed');
 }

@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Maybe } from '../../common/types';
 import type { Db } from '../../db/client';
 import { createTestDb } from '../../db/testing';
+import { decisionRepositoryFactory } from '../../entities/decision/repository';
+import { decisionServiceFactory } from '../../entities/decision/service';
+import { DecisionSource, type DecisionService } from '../../entities/decision/types';
 import { ideaRepositoryFactory } from '../../entities/idea/repository';
 import { ideaServiceFactory } from '../../entities/idea/service';
 import { IdeaSource, IdeaStatus, type IdeaService } from '../../entities/idea/types';
@@ -10,18 +13,21 @@ import { planServiceFactory } from '../../entities/plan/service';
 import { PlanSuggestion, type PlanService } from '../../entities/plan/types';
 import { questionRepositoryFactory } from '../../entities/question/repository';
 import { questionServiceFactory } from '../../entities/question/service';
-import type { QuestionService } from '../../entities/question/types';
+import { QuestionStatus, type QuestionService } from '../../entities/question/types';
 import { researchJobRepositoryFactory } from '../../entities/research-job/repository';
 import { researchJobServiceFactory } from '../../entities/research-job/service';
-import { ResearchJobStatus, type ResearchJobService } from '../../entities/research-job/types';
 import {
-  MAX_ATTEMPTS,
-  MAX_DISPATCH_FAILURES,
-  buildIntakePrompt,
-  parseResearchReply,
-  researchServiceFactory,
-} from './service';
-import { ResearchRunState, type ResearchRun, type ResearchRunner } from './types';
+  ResearchJobKind,
+  ResearchJobStatus,
+  type ResearchJobService,
+} from '../../entities/research-job/types';
+import { MAX_ATTEMPTS, MAX_DISPATCH_FAILURES, researchServiceFactory } from './service';
+import {
+  ResearchRunState,
+  type ResearchRun,
+  type ResearchRunner,
+  type ResearchService,
+} from './types';
 
 const T0 = new Date('2026-10-02T12:00:00Z');
 const at = (minutes: number) => new Date(T0.getTime() + minutes * 60_000);
@@ -38,6 +44,25 @@ const reply = (over: Record<string, unknown> = {}) =>
     shelve_reason: null,
     ...over,
   });
+
+const refreshReply = (over: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    changed: true,
+    summary: 'Switch to Postgres.',
+    plan_md: '## Plan v2',
+    resolved: [],
+    questions: [],
+    suggest_status: 'PLANNED',
+    ...over,
+  });
+
+const askMany = (count: number) =>
+  Array.from({ length: count }, (_, i) => ({
+    topic: 't',
+    text: `Question ${String(i)}?`,
+    why: 'w',
+    default: 'd',
+  }));
 
 /** A scripted stand-in for Hermes: each new run follows the next queued script, and like Hermes the
  * same idempotency key returns the same run instead of starting another. */
@@ -94,6 +119,8 @@ function fakeRunner() {
 
 let db: Db;
 let cleanup: () => void;
+let clock: Date;
+let decisions: DecisionService;
 let ideas: IdeaService;
 let plans: PlanService;
 let questions: QuestionService;
@@ -101,6 +128,8 @@ let jobs: ResearchJobService;
 
 beforeEach(async () => {
   ({ db, cleanup } = await createTestDb());
+  clock = T0;
+  decisions = decisionServiceFactory({ decisionRepository: decisionRepositoryFactory({ db }) });
   ideas = ideaServiceFactory({
     ideaRepository: ideaRepositoryFactory({ db }),
     titleGenerator: { generateIdeaTitle: () => Promise.resolve('An Idea') },
@@ -116,6 +145,7 @@ function makeService(
   over: { researchOnCapture?: boolean; questionService?: QuestionService } = {},
 ) {
   return researchServiceFactory({
+    decisionService: decisions,
     ideaService: ideas,
     planService: plans,
     questionService: over.questionService ?? questions,
@@ -124,14 +154,33 @@ function makeService(
     settings: {
       researchOnCapture: over.researchOnCapture ?? false,
       runTimeoutMs: 15 * 60_000,
+      refreshDebounceMs: 10 * 60_000,
       context: 'Self-hosts everything.',
     },
-    now: () => T0,
+    now: () => clock,
   });
 }
 
 const capture = (text = 'a board for my ideas') =>
   ideas.captureIdea({ text, title: null, source: IdeaSource.WEB, sourceUrl: null });
+
+/** Moves the clock and ticks the worker at that time. */
+function tickAt(service: ResearchService, minutes: number) {
+  clock = at(minutes);
+  return service.tickResearch(clock);
+}
+
+/** An idea with plan v1 and its open question Q1, researched at T0. */
+async function researched(fake: ReturnType<typeof fakeRunner>, service: ResearchService) {
+  const idea = await capture();
+  await service.startResearch(idea.id);
+  await tickAt(service, 0);
+  fake.finish(lastRunId(fake), { output: reply() });
+  await tickAt(service, 0);
+  return idea;
+}
+
+const lastRunId = (fake: ReturnType<typeof fakeRunner>) => fake.started.at(-1)?.runId ?? '';
 
 describe('research', () => {
   it('queues one job per idea and marks the idea as researching', async () => {
@@ -283,26 +332,16 @@ describe('research', () => {
     expect(await jobs.getLatestJobForIdea(shelved.id)).toBeNull();
   });
 
-  it('a new plan version replaces unanswered open questions and keeps at most five', async () => {
+  it('an intake asks at most five questions', async () => {
     const fake = fakeRunner();
     const service = makeService(fake.runner);
     const idea = await capture();
-    const many = Array.from({ length: 7 }, (_, i) => ({
-      topic: 't',
-      text: `Q${String(i)}?`,
-      why: 'w',
-      default: 'd',
-    }));
-    for (const [index, output] of [reply(), reply({ questions: many })].entries()) {
-      await service.startResearch(idea.id);
-      await service.tickResearch(at(index * 10));
-      fake.finish(`run-${String(index + 1)}`, { output });
-      await service.tickResearch(at(index * 10 + 1));
-    }
-    expect((await plans.getLatestPlanForIdea(idea.id))?.version).toBe(2);
+    await service.startResearch(idea.id);
+    await tickAt(service, 0);
+    fake.finish('run-1', { output: reply({ questions: askMany(7) }) });
+    await tickAt(service, 1);
     const asked = await questions.listQuestionsForIdea(idea.id);
-    expect(asked).toHaveLength(5);
-    expect(asked[0]?.number).toBe(2);
+    expect(asked.map((q) => q.number)).toEqual([1, 2, 3, 4, 5]);
   });
 
   it('deleting an idea removes its plans, questions and jobs', async () => {
@@ -399,12 +438,12 @@ describe('research', () => {
     let failOnce = true;
     const flaky: QuestionService = {
       ...questions,
-      replaceOpenQuestions: (...args) => {
+      appendQuestions: (...args) => {
         if (failOnce) {
           failOnce = false;
           return Promise.reject(new Error('SQLITE_BUSY'));
         }
-        return questions.replaceOpenQuestions(...args);
+        return questions.appendQuestions(...args);
       },
     };
     const service = makeService(fake.runner, { questionService: flaky });
@@ -470,53 +509,257 @@ describe('research', () => {
   });
 });
 
-describe('parseResearchReply', () => {
-  it('accepts a bare object and tolerates fences and prose around it', () => {
-    expect(parseResearchReply(reply()).ok).toBe(true);
-    expect(parseResearchReply(`Sure!\n\`\`\`json\n${reply()}\n\`\`\`\nHope it helps`).ok).toBe(
-      true,
+describe('answers, decisions and refreshes', () => {
+  it('folds a run of answers and decisions into the plan as one refresh, after a pause', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    const v1 = await plans.getLatestPlanForIdea(idea.id);
+
+    clock = at(1);
+    const q1 = await questions.getQuestionByNumber(idea.id, 1);
+    const { refresh } = await service.answerQuestion(q1.id, '  Just me  ');
+    expect(refresh).toMatchObject({
+      kind: ResearchJobKind.REFRESH,
+      status: ResearchJobStatus.QUEUED,
+      notBefore: at(11),
+    });
+    clock = at(5);
+    const recorded = await service.recordDecision(idea.id, 'Use Postgres', DecisionSource.BOARD);
+    expect(recorded.refresh).toMatchObject({ id: refresh?.id, notBefore: at(15) });
+
+    await tickAt(service, 14);
+    expect(fake.started).toHaveLength(1);
+    await tickAt(service, 15);
+    expect(fake.started).toHaveLength(2);
+    const prompt = fake.started[1]?.prompt ?? '';
+    expect(prompt).toContain('Q1 [scope] Multi-user?\n  Answer: Just me');
+    expect(prompt).toContain('- Decision: Use Postgres');
+    expect(prompt).toContain('## Plan\n1. Do the thing');
+    expect(prompt).toContain('Looked at prior art.');
+
+    fake.finish('run-2', {
+      output: refreshReply({
+        resolved: [{ number: 1, applied: 'Dropped accounts' }],
+        sources: [{ url: 'https://postgresql.org', title: 'PostgreSQL', first_party: true }],
+      }),
+    });
+    await tickAt(service, 16);
+
+    const v2 = await plans.getLatestPlanForIdea(idea.id);
+    expect(v2).toMatchObject({ version: 2, summary: 'Switch to Postgres.', planMd: '## Plan v2' });
+    expect(v2?.stack).toEqual(v1?.stack);
+    expect(v2?.researchMd).toBe(v1?.researchMd);
+    expect(v2?.sources.map((source) => source.url)).toEqual([
+      'https://postgresql.org',
+      'https://sqlite.org',
+    ]);
+    expect(await questions.getQuestionByNumber(idea.id, 1)).toMatchObject({
+      status: QuestionStatus.RESOLVED,
+      answer: 'Just me',
+      resolvedInPlanId: v2?.id,
+      appliedNote: 'Dropped accounts',
+    });
+    expect(await decisions.listDecisionsForIdea(idea.id)).toMatchObject([
+      { text: 'Use Postgres', source: DecisionSource.BOARD, appliedInPlanId: v2?.id },
+    ]);
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      status: ResearchJobStatus.SUCCEEDED,
+      outcome: 'Plan v2: Switch to Postgres.',
+    });
+    expect((await ideas.getIdeaById(idea.id)).status).toBe(IdeaStatus.PLANNED);
+  });
+
+  it('a refresh that changes nothing keeps the plan and still applies the answers', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    const v1 = await plans.getLatestPlanForIdea(idea.id);
+
+    clock = at(1);
+    const q1 = await questions.getQuestionByNumber(idea.id, 1);
+    await service.answerQuestion(q1.id, 'Just me');
+    clock = at(2);
+    const job = await service.startResearch(idea.id);
+    expect(job).toMatchObject({ kind: ResearchJobKind.REFRESH, notBefore: at(2) });
+    await tickAt(service, 2);
+    fake.finish('run-2', {
+      output: refreshReply({ changed: false, plan_md: null, summary: 'Single user already fits.' }),
+    });
+    await tickAt(service, 3);
+
+    expect(await plans.listPlansForIdea(idea.id)).toHaveLength(1);
+    expect(await questions.getQuestionByNumber(idea.id, 1)).toMatchObject({
+      status: QuestionStatus.RESOLVED,
+      resolvedInPlanId: v1?.id,
+      appliedNote: null,
+    });
+    expect((await jobs.getLatestJobForIdea(idea.id))?.outcome).toBe(
+      'No change to plan v1: Single user already fits.',
     );
   });
 
-  it('normalises the suggestion and defaults optional fields', () => {
-    const parsed = parseResearchReply(
-      JSON.stringify({ summary: 's', plan_md: 'p', suggest_status: 'shelved' }),
-    );
-    expect(parsed).toMatchObject({
-      ok: true,
-      reply: { suggest_status: 'SHELVED', stack: [], questions: [] },
+  it('an answer changed while a refresh runs stays answered and gets a refresh of its own', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    const q1 = await questions.getQuestionByNumber(idea.id, 1);
+    clock = at(1);
+    await service.answerQuestion(q1.id, 'Just me');
+    await tickAt(service, 11);
+
+    clock = at(12);
+    const { refresh } = await service.answerQuestion(q1.id, 'Me and my partner');
+    expect(refresh).toMatchObject({ status: ResearchJobStatus.RUNNING });
+    fake.finish('run-2', { output: refreshReply({ resolved: [{ number: 1, applied: 'x' }] }) });
+    await tickAt(service, 13);
+
+    expect(await questions.getQuestionByNumber(idea.id, 1)).toMatchObject({
+      status: QuestionStatus.ANSWERED,
+      answer: 'Me and my partner',
+    });
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      kind: ResearchJobKind.REFRESH,
+      status: ResearchJobStatus.QUEUED,
+      notBefore: at(22),
     });
   });
 
-  it('explains what is wrong', () => {
-    expect(parseResearchReply('no json here')).toEqual({
-      ok: false,
-      error: 'the reply contains no JSON object',
-    });
-    const bad = parseResearchReply(reply({ sources: [{ url: 'not a url' }] }));
-    expect(bad.ok).toBe(false);
-    expect(!bad.ok && bad.error).toContain('sources.0.url');
-  });
-});
+  it('decisions before the first research are in its prompt; one made during it gets a refresh', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await capture();
+    const early = await service.recordDecision(idea.id, 'Must run on a Pi', DecisionSource.BOARD);
+    expect(early.refresh).toBeNull();
+    expect(await jobs.getLatestJobForIdea(idea.id)).toBeNull();
 
-describe('buildIntakePrompt', () => {
-  it('quotes the idea verbatim and leaves out the context when there is none', () => {
-    const prompt = buildIntakePrompt(
-      {
-        id: 'i',
-        title: null,
-        body: 'raw "text"',
-        status: IdeaStatus.CAPTURED,
-        source: IdeaSource.SLACK,
-        sourceUrl: null,
-        createdAt: T0,
-        updatedAt: T0,
-      },
-      T0,
-      null,
+    await service.startResearch(idea.id);
+    await tickAt(service, 0);
+    expect(fake.started[0]?.prompt).toContain("THE AUTHOR'S DECISIONS");
+    expect(fake.started[0]?.prompt).toContain('- Must run on a Pi');
+
+    clock = at(1);
+    const late = await service.recordDecision(idea.id, 'Budget is zero', DecisionSource.ASSISTANT);
+    expect(late.refresh).toMatchObject({ kind: ResearchJobKind.INTAKE });
+    fake.finish('run-1', { output: reply() });
+    await tickAt(service, 2);
+
+    const v1 = await plans.getLatestPlanForIdea(idea.id);
+    expect(
+      (await decisions.listDecisionsForIdea(idea.id)).map((d) => [d.text, d.appliedInPlanId]),
+    ).toEqual([
+      ['Must run on a Pi', v1?.id],
+      ['Budget is zero', null],
+    ]);
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      kind: ResearchJobKind.REFRESH,
+      status: ResearchJobStatus.QUEUED,
+      notBefore: at(11),
+    });
+  });
+
+  it('a new attempt reads the answers given since the failed one', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    clock = at(1);
+    await service.startResearch(idea.id);
+    await tickAt(service, 1);
+    expect(fake.started[1]?.prompt).toContain('NEW FROM THE AUTHOR');
+    expect(fake.started[1]?.prompt).not.toContain('Answer: Just me');
+
+    clock = at(2);
+    await service.answerQuestion((await questions.getQuestionByNumber(idea.id, 1)).id, 'Just me');
+    fake.runs.set('run-2', {
+      state: ResearchRunState.FAILED,
+      output: null,
+      sessionId: null,
+      detail: 'interrupted',
+    });
+    await tickAt(service, 3);
+    await tickAt(service, 8);
+    expect(fake.started).toHaveLength(3);
+    expect(fake.started[2]?.prompt).toContain('Answer: Just me');
+  });
+
+  it('a refresh asks new questions only up to five open, numbering on', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    clock = at(1);
+    await service.answerQuestion((await questions.getQuestionByNumber(idea.id, 1)).id, 'Just me');
+    await service.startResearch(idea.id);
+    await tickAt(service, 1);
+    expect(fake.started[1]?.prompt).toContain('at most 5, never one already asked');
+    fake.finish('run-2', { output: refreshReply({ questions: askMany(7) }) });
+    await tickAt(service, 2);
+    const asked = await questions.listQuestionsForIdea(idea.id);
+    expect(asked.map((q) => [q.number, q.status])).toEqual([
+      [1, QuestionStatus.RESOLVED],
+      [2, QuestionStatus.OPEN],
+      [3, QuestionStatus.OPEN],
+      [4, QuestionStatus.OPEN],
+      [5, QuestionStatus.OPEN],
+      [6, QuestionStatus.OPEN],
+    ]);
+  });
+
+  it('finishing a refresh again after a restart applies it once', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    clock = at(1);
+    await service.answerQuestion((await questions.getQuestionByNumber(idea.id, 1)).id, 'Just me');
+    await service.startResearch(idea.id);
+    await tickAt(service, 1);
+    fake.finish('run-2', { output: refreshReply({ questions: askMany(1) }) });
+    await tickAt(service, 2);
+    const job = await jobs.getLatestJobForIdea(idea.id);
+    await jobs.updateJob(job?.id ?? '', { status: ResearchJobStatus.RUNNING }, at(3));
+    await tickAt(service, 3);
+
+    expect(await plans.listPlansForIdea(idea.id)).toHaveLength(2);
+    expect((await questions.listQuestionsForIdea(idea.id)).map((q) => q.number)).toEqual([1, 2]);
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      id: job?.id,
+      status: ResearchJobStatus.SUCCEEDED,
+      outcome: 'Plan v2: Switch to Postgres.',
+    });
+  });
+
+  it('answers by number, and refuses an answer once a refresh applied it', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    clock = at(1);
+    const { question } = await service.answerQuestionByNumber(idea.id, 1, 'Just me');
+    expect(question).toMatchObject({
+      number: 1,
+      status: QuestionStatus.ANSWERED,
+      answeredAt: at(1),
+    });
+    await expect(service.answerQuestionByNumber(idea.id, 9, 'x')).rejects.toThrow('no question Q9');
+    await expect(service.answerQuestionByNumber(idea.id, 1, '   ')).rejects.toThrow('some text');
+
+    await service.startResearch(idea.id);
+    await tickAt(service, 1);
+    fake.finish('run-2', { output: refreshReply() });
+    await tickAt(service, 2);
+    await expect(service.answerQuestionByNumber(idea.id, 1, 'Changed my mind')).rejects.toThrow(
+      'already applied to the plan',
     );
-    expect(prompt).toContain('<<<\nraw "text"\n>>>');
-    expect(prompt).toContain('Today is 2026-10-02');
-    expect(prompt).not.toContain('ABOUT THE AUTHOR');
+  });
+
+  it('with research off, saves answers and decisions without queuing anything', async () => {
+    const fake = fakeRunner();
+    const idea = await researched(fake, makeService(fake.runner));
+    const off = makeService({ ...fake.runner, isConfigured: () => false });
+    const q1 = await questions.getQuestionByNumber(idea.id, 1);
+    expect((await off.answerQuestion(q1.id, 'Just me')).refresh).toBeNull();
+    expect((await off.recordDecision(idea.id, 'Go', DecisionSource.BOARD)).refresh).toBeNull();
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      kind: ResearchJobKind.INTAKE,
+      status: ResearchJobStatus.SUCCEEDED,
+    });
   });
 });

@@ -5,6 +5,7 @@ import { logException } from './common/logger';
 import { settings } from './common/settings';
 import { ideaUrl } from './entities/idea/routes';
 import { registerBriefTools } from './features/brief/mcp';
+import { registerResearchTools } from './features/research/mcp';
 import { readJsonBody } from './rest';
 import { getServices } from './services';
 
@@ -25,7 +26,9 @@ export async function handleMcpRequest(req: IncomingMessage, res: ServerResponse
   }
   const origin = settings.PUBLIC_URL ?? `http://${req.headers.host ?? 'localhost'}`;
   const server = new McpServer({ name: 'project-planner', version: '1.0.0' });
-  registerBriefTools(server, getServices(), (id) => ideaUrl(origin, id));
+  const services = getServices();
+  registerBriefTools(server, services, (id) => ideaUrl(origin, id));
+  registerResearchTools(server, services);
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,

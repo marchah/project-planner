@@ -1,6 +1,13 @@
 import { builder } from '../../builder';
-import { NotFoundError, ServiceUnavailableError } from '../../common/errors';
+import {
+  ConflictError,
+  NotFoundError,
+  ServiceUnavailableError,
+  ValidationError,
+} from '../../common/errors';
+import { DECISION_MAX_LENGTH, DecisionSource } from '../../entities/decision/types';
 import { IdeaRef } from '../../entities/idea/schema.pothos';
+import { ANSWER_MAX_LENGTH } from '../../entities/question/types';
 
 builder.queryFields((t) => ({
   researchEnabled: t.boolean({
@@ -26,6 +33,41 @@ builder.mutationFields((t) => ({
     args: { ideaId: t.arg.id({ required: true }) },
     resolve: async (_root, args, ctx) => {
       await ctx.services.researchService.startResearch(args.ideaId);
+      return ctx.services.ideaService.getIdeaById(args.ideaId);
+    },
+  }),
+  // These return the idea so the board and the open dialog both refetch it.
+  answerQuestion: t.field({
+    type: IdeaRef,
+    errors: { types: [NotFoundError, ValidationError, ConflictError] },
+    args: {
+      id: t.arg.id({ required: true }),
+      answer: t.arg.string({
+        required: true,
+        validate: { minLength: 1, maxLength: ANSWER_MAX_LENGTH },
+      }),
+    },
+    resolve: async (_root, args, ctx) => {
+      const { question } = await ctx.services.researchService.answerQuestion(args.id, args.answer);
+      return ctx.services.ideaService.getIdeaById(question.ideaId);
+    },
+  }),
+  recordDecision: t.field({
+    type: IdeaRef,
+    errors: { types: [NotFoundError, ValidationError] },
+    args: {
+      ideaId: t.arg.id({ required: true }),
+      text: t.arg.string({
+        required: true,
+        validate: { minLength: 1, maxLength: DECISION_MAX_LENGTH },
+      }),
+    },
+    resolve: async (_root, args, ctx) => {
+      await ctx.services.researchService.recordDecision(
+        args.ideaId,
+        args.text,
+        DecisionSource.BOARD,
+      );
       return ctx.services.ideaService.getIdeaById(args.ideaId);
     },
   }),

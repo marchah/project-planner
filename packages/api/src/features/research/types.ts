@@ -1,5 +1,6 @@
 import type { Maybe } from '../../common/types';
-import type { Idea } from '../../entities/idea/types';
+import type { Decision, DecisionSource } from '../../entities/decision/types';
+import type { Question } from '../../entities/question/types';
 import type { ResearchJob } from '../../entities/research-job/types';
 
 export enum ResearchRunState {
@@ -35,17 +36,42 @@ export interface ResearchSettings {
   /** Research ideas still CAPTURED without being asked to. */
   researchOnCapture: boolean;
   runTimeoutMs: number;
+  /** After an answer or a decision, wait this long for more before refreshing the plan. */
+  refreshDebounceMs: number;
   /** Free text about the person and their setup, appended to every research prompt. */
   context: Maybe<string>;
 }
 
+/** What was saved, and the research job that will fold it into the plan, if one will. */
+export interface AnsweredQuestion {
+  question: Question;
+  refresh: Maybe<ResearchJob>;
+}
+
+export interface RecordedDecision {
+  decision: Decision;
+  refresh: Maybe<ResearchJob>;
+}
+
 export interface ResearchService {
   isResearchEnabled: () => boolean;
-  /** Queue research for an idea, or return the job already queued or running for it. */
+  /** Research an idea now: its first plan, or a refresh of the plan it has. Returns the job that
+   * will run, which may be one already queued or running. */
   startResearch: (ideaId: string) => Promise<ResearchJob>;
+  /** Save an answer and schedule a refresh, which waits a little for more answers. */
+  answerQuestion: (questionId: string, answer: string) => Promise<AnsweredQuestion>;
+  answerQuestionByNumber: (
+    ideaId: string,
+    number: number,
+    answer: string,
+  ) => Promise<AnsweredQuestion>;
+  recordDecision: (
+    ideaId: string,
+    text: string,
+    source: DecisionSource,
+  ) => Promise<RecordedDecision>;
   /** Delete an idea, stopping its research run first if one is running. */
   deleteIdea: (ideaId: string) => Promise<void>;
   /** Advance the queue by one step. Called on an interval by the worker; never concurrently. */
   tickResearch: (now: Date) => Promise<void>;
-  buildIntakePrompt: (idea: Idea, today: Date) => string;
 }

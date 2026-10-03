@@ -8,9 +8,25 @@ A date-time string at UTC, such as 2007-12-03T10:15:30Z, compliant with the `dat
 """
 scalar DateTime
 
+type Decision {
+  appliedAt: DateTime
+  createdAt: DateTime!
+  id: ID!
+  source: DecisionSource!
+  text: String!
+}
+
+enum DecisionSource {
+  ASSISTANT
+  BOARD
+}
+
 type Idea {
   body: String!
   createdAt: DateTime!
+
+  """What the author decided outside the questions, oldest first."""
+  decisions: [Decision!]!
   id: ID!
   latestPlan: Plan
   openQuestionCount: Int!
@@ -41,11 +57,19 @@ enum IdeaStatus {
 }
 
 type Mutation {
+  answerQuestion(answer: String!, id: ID!): MutationAnswerQuestionResult!
   captureIdea(text: String!, title: String): MutationCaptureIdeaResult!
   deleteIdea(id: ID!): MutationDeleteIdeaResult!
   generateIdeaTitle(id: ID!): MutationGenerateIdeaTitleResult!
+  recordDecision(ideaId: ID!, text: String!): MutationRecordDecisionResult!
   startResearch(ideaId: ID!): MutationStartResearchResult!
   updateIdea(body: String, id: ID!, status: IdeaStatus, title: String): MutationUpdateIdeaResult!
+}
+
+union MutationAnswerQuestionResult = ConflictError | MutationAnswerQuestionSuccess | NotFoundError | ServerError | ValidationError
+
+type MutationAnswerQuestionSuccess {
+  data: Idea!
 }
 
 union MutationCaptureIdeaResult = MutationCaptureIdeaSuccess | ServerError | ValidationError
@@ -63,6 +87,12 @@ type MutationDeleteIdeaSuccess {
 union MutationGenerateIdeaTitleResult = MutationGenerateIdeaTitleSuccess | NotFoundError | ServerError | ServiceUnavailableError
 
 type MutationGenerateIdeaTitleSuccess {
+  data: Idea!
+}
+
+union MutationRecordDecisionResult = MutationRecordDecisionSuccess | NotFoundError | ServerError | ValidationError
+
+type MutationRecordDecisionSuccess {
   data: Idea!
 }
 
@@ -121,10 +151,15 @@ type QueryIdeaSuccess {
 
 type Question {
   answer: String
+  answeredAt: DateTime
+
+  """What applying the answer changed in the plan."""
+  appliedNote: String
   createdAt: DateTime!
   defaultAnswer: String!
   id: ID!
   number: Int!
+  resolvedAt: DateTime
   status: QuestionStatus!
   text: String!
   topic: String!
@@ -144,9 +179,18 @@ type ResearchJob {
   error: String
   finishedAt: DateTime
   id: ID!
+  kind: ResearchJobKind!
   notBefore: DateTime!
+
+  """What the finished job did, e.g. what a refresh changed."""
+  outcome: String
   startedAt: DateTime
   status: ResearchJobStatus!
+}
+
+enum ResearchJobKind {
+  INTAKE
+  REFRESH
 }
 
 enum ResearchJobStatus {

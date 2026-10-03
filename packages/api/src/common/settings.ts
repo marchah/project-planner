@@ -46,6 +46,12 @@ const EnvSchema = z.object({
     .positive()
     .default(15 * 60_000),
   RESEARCH_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
+  // After an answer or a decision, wait this long for more before refreshing the plan.
+  REFRESH_DEBOUNCE_MS: z.coerce
+    .number()
+    .int()
+    .nonnegative()
+    .default(10 * 60_000),
   // Free text about you and your setup, appended to every research prompt.
   RESEARCH_CONTEXT: optional(z.string()),
   // Base for links handed to machine callers; defaults to the Host header they reached us on.
@@ -71,6 +77,7 @@ export const settings = {
   RESEARCH_RUN_TIMEOUT_MS: ENV.RESEARCH_RUN_TIMEOUT_MS,
   RESEARCH_POLL_INTERVAL_MS: ENV.RESEARCH_POLL_INTERVAL_MS,
   RESEARCH_CONTEXT: ENV.RESEARCH_CONTEXT,
+  REFRESH_DEBOUNCE_MS: ENV.REFRESH_DEBOUNCE_MS,
   TITLE_MODEL_BASE_URL: ENV.TITLE_MODEL_BASE_URL,
   TITLE_MODEL: ENV.TITLE_MODEL,
   TITLE_MODEL_API_KEY: ENV.TITLE_MODEL_API_KEY,
