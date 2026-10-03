@@ -142,7 +142,11 @@ afterEach(() => cleanup());
 
 function makeService(
   runner: ResearchRunner,
-  over: { researchOnCapture?: boolean; questionService?: QuestionService } = {},
+  over: {
+    researchOnCapture?: boolean;
+    questionService?: QuestionService;
+    refreshSchedule?: string;
+  } = {},
 ) {
   return researchServiceFactory({
     decisionService: decisions,
@@ -155,6 +159,9 @@ function makeService(
       researchOnCapture: over.researchOnCapture ?? false,
       runTimeoutMs: 15 * 60_000,
       refreshDebounceMs: 10 * 60_000,
+      refreshSchedule: over.refreshSchedule
+        ? { pattern: over.refreshSchedule, timezone: 'UTC' }
+        : null,
       context: 'Self-hosts everything.',
     },
     now: () => clock,
@@ -171,8 +178,12 @@ function tickAt(service: ResearchService, minutes: number) {
 }
 
 /** An idea with plan v1 and its open question Q1, researched at T0. */
-async function researched(fake: ReturnType<typeof fakeRunner>, service: ResearchService) {
-  const idea = await capture();
+async function researched(
+  fake: ReturnType<typeof fakeRunner>,
+  service: ResearchService,
+  text?: string,
+) {
+  const idea = await capture(text);
   await service.startResearch(idea.id);
   await tickAt(service, 0);
   fake.finish(lastRunId(fake), { output: reply() });
@@ -761,5 +772,78 @@ describe('answers, decisions and refreshes', () => {
       kind: ResearchJobKind.INTAKE,
       status: ResearchJobStatus.SUCCEEDED,
     });
+  });
+});
+
+describe('scheduled refresh', () => {
+  // T0 is Friday 2026-10-02 12:00 UTC; the slots are Sundays 10:00 UTC.
+  const SUNDAYS = '0 10 * * 0';
+  const SLOT = new Date('2026-10-04T10:00:00Z');
+  const minutesFromT0 = (date: Date) => (date.getTime() - T0.getTime()) / 60_000;
+
+  it('re-checks planned ideas when the slot comes round, except shelved, done, muted or unplanned', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner, { refreshSchedule: SUNDAYS });
+    const planned = await researched(fake, service, 'planned');
+    const shelved = await researched(fake, service, 'shelved');
+    await ideas.updateIdea(shelved.id, { status: IdeaStatus.SHELVED });
+    const done = await researched(fake, service, 'done');
+    await ideas.updateIdea(done.id, { status: IdeaStatus.DONE });
+    const muted = await researched(fake, service, 'muted');
+    await ideas.updateIdea(muted.id, { autoRefresh: false });
+    const unplanned = await capture('never researched');
+    const failed = await capture('research failed');
+    const { job: failedJob } = await jobs.queueJob(failed.id, ResearchJobKind.INTAKE, T0);
+    await jobs.updateJob(failedJob.id, { status: ResearchJobStatus.FAILED }, T0);
+
+    await tickAt(service, 60);
+    expect(fake.started).toHaveLength(4);
+    await tickAt(service, minutesFromT0(SLOT));
+    expect(fake.started).toHaveLength(5);
+    expect(fake.started[4]?.prompt).toContain('updating the plan');
+    expect(fake.started[4]?.prompt).toContain('planned');
+    for (const idea of [shelved, done, muted]) {
+      expect((await jobs.getLatestJobForIdea(idea.id))?.kind).toBe(ResearchJobKind.INTAKE);
+    }
+    expect(await jobs.getLatestJobForIdea(unplanned.id)).toBeNull();
+    expect((await jobs.getLatestJobForIdea(failed.id))?.id).toBe(failedJob.id);
+    expect(await jobs.getLatestJobForIdea(planned.id)).toMatchObject({
+      kind: ResearchJobKind.REFRESH,
+      status: ResearchJobStatus.RUNNING,
+    });
+  });
+
+  it('catches up a slot missed while the board was down, once', async () => {
+    const fake = fakeRunner();
+    const idea = await researched(fake, makeService(fake.runner, { refreshSchedule: SUNDAYS }));
+
+    // Restarted on Tuesday: Sunday's slot was missed.
+    const restarted = makeService(fake.runner, { refreshSchedule: SUNDAYS });
+    const tuesday = minutesFromT0(new Date('2026-10-06T08:00:00Z'));
+    await tickAt(restarted, tuesday);
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      kind: ResearchJobKind.REFRESH,
+      status: ResearchJobStatus.RUNNING,
+    });
+    fake.finish(lastRunId(fake), { output: refreshReply({ changed: false, plan_md: null }) });
+    await tickAt(restarted, tuesday + 1);
+    await tickAt(restarted, tuesday + 2);
+    await tickAt(makeService(fake.runner, { refreshSchedule: SUNDAYS }), tuesday + 3);
+    expect(fake.started).toHaveLength(2);
+  });
+
+  it('says when an idea is next re-checked, and not for one it will skip', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner, { refreshSchedule: SUNDAYS });
+    const idea = await researched(fake, service);
+    expect(service.isScheduledRefreshEnabled()).toBe(true);
+    expect(await service.getNextScheduledRefresh(idea.id)).toEqual(SLOT);
+    await ideas.updateIdea(idea.id, { autoRefresh: false });
+    expect(await service.getNextScheduledRefresh(idea.id)).toBeNull();
+
+    const unscheduled = makeService(fake.runner);
+    await ideas.updateIdea(idea.id, { autoRefresh: true });
+    expect(unscheduled.isScheduledRefreshEnabled()).toBe(false);
+    expect(await unscheduled.getNextScheduledRefresh(idea.id)).toBeNull();
   });
 });

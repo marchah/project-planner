@@ -22,6 +22,8 @@ enum DecisionSource {
 }
 
 type Idea {
+  """Whether the refresh schedule re-checks its plan."""
+  autoRefresh: Boolean!
   body: String!
   createdAt: DateTime!
 
@@ -29,6 +31,9 @@ type Idea {
   decisions: [Decision!]!
   id: ID!
   latestPlan: Plan
+
+  """When the schedule next re-checks this plan; null when it will not."""
+  nextScheduledRefresh: DateTime
   openQuestionCount: Int!
   questions: [Question!]!
 
@@ -63,7 +68,7 @@ type Mutation {
   generateIdeaTitle(id: ID!): MutationGenerateIdeaTitleResult!
   recordDecision(ideaId: ID!, text: String!): MutationRecordDecisionResult!
   startResearch(ideaId: ID!): MutationStartResearchResult!
-  updateIdea(body: String, id: ID!, status: IdeaStatus, title: String): MutationUpdateIdeaResult!
+  updateIdea(autoRefresh: Boolean, body: String, id: ID!, status: IdeaStatus, title: String): MutationUpdateIdeaResult!
 }
 
 union MutationAnswerQuestionResult = ConflictError | MutationAnswerQuestionSuccess | NotFoundError | ServerError | ValidationError
@@ -141,6 +146,9 @@ type Query {
   idea(id: ID!): QueryIdeaResult!
   ideas: [Idea!]!
   researchEnabled: Boolean!
+
+  """Whether plans are re-checked on a schedule (REFRESH_SCHEDULE)."""
+  scheduledRefreshEnabled: Boolean!
 }
 
 union QueryIdeaResult = NotFoundError | QueryIdeaSuccess | ServerError

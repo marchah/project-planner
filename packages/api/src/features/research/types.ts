@@ -38,6 +38,8 @@ export interface ResearchSettings {
   runTimeoutMs: number;
   /** After an answer or a decision, wait this long for more before refreshing the plan. */
   refreshDebounceMs: number;
+  /** When every planned idea is re-checked: a cron pattern read in an IANA time zone. */
+  refreshSchedule: Maybe<{ pattern: string; timezone: string }>;
   /** Free text about the person and their setup, appended to every research prompt. */
   context: Maybe<string>;
 }
@@ -55,6 +57,9 @@ export interface RecordedDecision {
 
 export interface ResearchService {
   isResearchEnabled: () => boolean;
+  isScheduledRefreshEnabled: () => boolean;
+  /** When the schedule next re-checks this idea's plan; null when it will not. */
+  getNextScheduledRefresh: (ideaId: string) => Promise<Maybe<Date>>;
   /** Research an idea now: its first plan, or a refresh of the plan it has. Returns the job that
    * will run, which may be one already queued or running. */
   startResearch: (ideaId: string) => Promise<ResearchJob>;

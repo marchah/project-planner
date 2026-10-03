@@ -20,6 +20,7 @@
     "@pothos/core": "^4.13.1",
     "@pothos/plugin-errors": "^4.9.1",
     "@pothos/plugin-zod": "^4.3.1",
+    "croner": "^10.0.1",
     "dataloader": "^2.2.3",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",

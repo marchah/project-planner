@@ -29,6 +29,13 @@
       "when": 1790988664736,
       "tag": "0003_answers_decisions_refresh",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1791027438114,
+      "tag": "0004_idea_auto_refresh",
+      "breakpoints": true
     }
   ]
 }

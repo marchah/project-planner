@@ -5,10 +5,10 @@ it, writes a plan and a few clarifying questions, and the board stores everythin
 questions whenever you are ready, and the plan is re-checked weekly for better approaches or
 newer tools.
 
-Status: **steps 1, 2 and 4 built, and step 3 except its schedule**: board, capture (board, REST,
-Slack), model-written titles, research into a plan with clarifying questions, answers and decisions
-(on the board or over MCP) folded in by a debounced plan refresh, and an MCP server to read and
-answer. The weekly refresh schedule is next.
+Status: **steps 1–4 built**: board, capture (board, REST, Slack), model-written titles, research
+into a plan with clarifying questions, answers and decisions (on the board or over MCP) folded in by
+a debounced plan refresh, a scheduled re-check of every planned idea, and an MCP server to read and
+answer.
 
 ```
  Slack #ideas ──▶ Hermes (CT 121) ──POST /api/ideas──▶ ┌──────────────────────────────┐
@@ -127,11 +127,14 @@ changing course is a decision. Anything that arrives while a run is under way wa
 so it stays pending and gets a refresh of its own once that run finishes. A decision recorded
 before the first research is simply part of its prompt.
 
-**Weekly refresh.** Sunday 10:00 America/New_York, the board queues a refresh for every idea not
-`shelved`/`done`/muted. The run folds in answers, re-checks each item in the plan's `stack` for a
-newer major version, a deprecation or a better-fitting alternative, and returns `changed: false`
-when nothing would change the plan. Unchanged runs create no plan version. There is no rotation:
-the timeout that forced it is gone, and runs are serialised anyway (§5).
+**Weekly refresh.** At each slot of `REFRESH_SCHEDULE` (a cron pattern read in `REFRESH_TIMEZONE`;
+here Sunday 10:00 America/New_York), the board queues a refresh for every idea that has a plan, is
+not `shelved` or `done`, is not muted ("Re-check this plan on schedule" unticked), and has not been
+researched since the slot. The run folds in pending answers, re-checks each item in the plan's
+`stack` for a newer major version, a deprecation or a better-fitting alternative, and returns
+`changed: false` when nothing would change the plan. Unchanged runs create no plan version. There is
+no rotation: the timeout that forced it is gone, and runs are serialised anyway (§5). Unset, nothing
+runs on a schedule: each run spends model quota, so it is opt-in like `RESEARCH_ON_CAPTURE`.
 
 ## 4. The question rules (carried over; these are the core of the tool)
 
@@ -167,6 +170,9 @@ Built as `features/research` plus `src/worker.ts`, which calls one tick every
   set by hand is never overridden.
 - `RESEARCH_ON_CAPTURE=true` also queues every `CAPTURED` idea that has never been researched.
   It is off by default: research runs from the note's button until its quality has been judged.
+- The scheduled pass runs on the first tick after each slot. Whether an idea is due is read from
+  its jobs (none created since the slot), so it keeps no state of its own: a slot missed while the
+  board was down is caught up when it starts, and a restart never queues one twice.
 - Backlog after an outage: jobs stay queued and drain when CT 121 is back.
 
 ## 6. Run contract
@@ -225,13 +231,13 @@ and do read-only research (no files, memories, skills, scheduled jobs or message
 
 ## 7. Data model (SQLite via Drizzle)
 
-| Table           | Holds                                                                                                                                                                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ideas`         | id, title (model-written or yours; empty until one of you has written it), body (raw capture), status (`CAPTURED · RESEARCHING · PLANNED · BUILDING · SHELVED · DONE`), source (`WEB · SLACK · API`), source URL (Slack permalink), timestamps |
-| `plans`         | one row per version: idea, version, summary, `plan_md`, `stack` JSON, `research_md`, sources JSON, suggestion (`PLANNED · SHELVED`) + reason, the job that produced it. Plan history is these rows                                             |
-| `questions`     | idea, number (per idea, never reused), topic, text, why, default, answer, status (`OPEN · ANSWERED · RESOLVED · SUPERSEDED`), the plan and job that asked it, answered at, the plan that applied it and what it changed                        |
-| `decisions`     | idea, text, source (`BOARD · ASSISTANT`), the plan that applied it, timestamps                                                                                                                                                                 |
-| `research_jobs` | idea, kind (`INTAKE · REFRESH`), status (`QUEUED · RUNNING · SUCCEEDED · FAILED`), attempt, the attempt's prompt and input instant, Hermes run id, repair used, not-before, deadline, outcome, error, timestamps                               |
+| Table           | Holds                                                                                                                                                                                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ideas`         | id, title (model-written or yours; empty until one of you has written it), body (raw capture), status (`CAPTURED · RESEARCHING · PLANNED · BUILDING · SHELVED · DONE`), source (`WEB · SLACK · API`), source URL (Slack permalink), whether the schedule re-checks it, timestamps |
+| `plans`         | one row per version: idea, version, summary, `plan_md`, `stack` JSON, `research_md`, sources JSON, suggestion (`PLANNED · SHELVED`) + reason, the job that produced it. Plan history is these rows                                                                                |
+| `questions`     | idea, number (per idea, never reused), topic, text, why, default, answer, status (`OPEN · ANSWERED · RESOLVED · SUPERSEDED`), the plan and job that asked it, answered at, the plan that applied it and what it changed                                                           |
+| `decisions`     | idea, text, source (`BOARD · ASSISTANT`), the plan that applied it, timestamps                                                                                                                                                                                                    |
+| `research_jobs` | idea, kind (`INTAKE · REFRESH`), status (`QUEUED · RUNNING · SUCCEEDED · FAILED`), attempt, the attempt's prompt and input instant, Hermes run id, repair used, not-before, deadline, outcome, error, timestamps                                                                  |
 
 Plans, questions, decisions and jobs are deleted with their idea (`ON DELETE CASCADE`; libsql enforces
 foreign keys by default). Open questions show as a badge on the note rather than a status. Every
@@ -276,10 +282,9 @@ Built:
   reason, the last update's outcome) with "Research this idea / Refresh now / Update now / Try
   again"; the plan rendered as Markdown with its stack and summary; a "suggests shelving" banner
   with a Shelve button; the questions with why, default and an answer field (an answer can be edited
-  until a refresh applies it, then shows what it changed); decisions with a field to record one; and
-  the research notes and sources, collapsed.
-
-Later, with the weekly schedule: muting an idea's refresh.
+  until a refresh applies it, then shows what it changed); decisions with a field to record one; a
+  "Re-check this plan on schedule" box with the next date, when a schedule is set; and the research
+  notes and sources, collapsed.
 
 ## 10. Deployment
 
@@ -319,8 +324,8 @@ Later, with the weekly schedule: muting an idea's refresh.
 2. ✅ **Job runner + intake contract, plus the board's MCP server with read tools** (§2.4, §5–6).
    Research runs from the note's button; `RESEARCH_ON_CAPTURE` stays off until research quality is
    judged on real ideas.
-3. **Answers, debounce and refresh, plus MCP tools to answer and record decisions.** ✅ Built
-   except the weekly schedule, which comes next with per-idea muting.
+3. ✅ **Answers, debounce and refresh, plus MCP tools to answer and record decisions.** Then the
+   scheduled re-check, with per-idea muting.
 4. ✅ **Slack `#ideas` capture:** the idea-capture plugin on CT 121, live 2026-10-02.
 5. Optional: the `planner` Hermes profile, if §11's toolset concern shows up in practice.
 

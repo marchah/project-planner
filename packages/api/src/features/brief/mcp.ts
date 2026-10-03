@@ -46,6 +46,7 @@ function present(
       text: idea.body,
       status: idea.status,
       capturedFrom: idea.source,
+      refreshedOnSchedule: idea.autoRefresh,
       createdAt: idea.createdAt,
     },
     plan: plan && {

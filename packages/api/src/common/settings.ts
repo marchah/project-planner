@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { Cron } from 'croner';
 import { z } from 'zod';
 
 // The SINGLE place environment variables are read. Everything else imports `settings`;
@@ -13,6 +14,24 @@ function optional<T extends z.ZodType>(schema: T) {
 
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, '');
+}
+
+function isCronPattern(pattern: string): boolean {
+  try {
+    new Cron(pattern, { paused: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isTimeZone(timeZone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const EnvSchema = z.object({
@@ -52,6 +71,16 @@ const EnvSchema = z.object({
     .int()
     .nonnegative()
     .default(10 * 60_000),
+  // When plans are re-checked, as a cron pattern (`0 10 * * 0`: Sundays 10:00). Unset: never on a
+  // schedule, only from answers, decisions and "Refresh now".
+  REFRESH_SCHEDULE: optional(
+    z.string().refine(isCronPattern, 'REFRESH_SCHEDULE is not a valid cron pattern'),
+  ),
+  // The IANA time zone REFRESH_SCHEDULE is read in.
+  REFRESH_TIMEZONE: z
+    .string()
+    .default('UTC')
+    .refine(isTimeZone, 'REFRESH_TIMEZONE is not an IANA time zone, e.g. Europe/Paris'),
   // Free text about you and your setup, appended to every research prompt.
   RESEARCH_CONTEXT: optional(z.string()),
   // Base for links handed to machine callers; defaults to the Host header they reached us on.
@@ -78,6 +107,8 @@ export const settings = {
   RESEARCH_POLL_INTERVAL_MS: ENV.RESEARCH_POLL_INTERVAL_MS,
   RESEARCH_CONTEXT: ENV.RESEARCH_CONTEXT,
   REFRESH_DEBOUNCE_MS: ENV.REFRESH_DEBOUNCE_MS,
+  REFRESH_SCHEDULE: ENV.REFRESH_SCHEDULE,
+  REFRESH_TIMEZONE: ENV.REFRESH_TIMEZONE,
   TITLE_MODEL_BASE_URL: ENV.TITLE_MODEL_BASE_URL,
   TITLE_MODEL: ENV.TITLE_MODEL,
   TITLE_MODEL_API_KEY: ENV.TITLE_MODEL_API_KEY,

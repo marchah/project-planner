@@ -20,6 +20,7 @@ export const ideas = sqliteTable('ideas', {
   status: text('status').$type<IdeaStatus>().notNull().default(IdeaStatus.CAPTURED),
   source: text('source').$type<IdeaSource>().notNull().default(IdeaSource.WEB),
   sourceUrl: text('source_url'),
+  autoRefresh: integer('auto_refresh', { mode: 'boolean' }).notNull().default(true),
   createdAt: timestamp('created_at').notNull().default(now),
   updatedAt: timestamp('updated_at').notNull().default(now),
 });

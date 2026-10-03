@@ -13,7 +13,20 @@ builder.queryFields((t) => ({
   researchEnabled: t.boolean({
     resolve: (_root, _args, ctx) => ctx.services.researchService.isResearchEnabled(),
   }),
+  scheduledRefreshEnabled: t.boolean({
+    description: 'Whether plans are re-checked on a schedule (REFRESH_SCHEDULE).',
+    resolve: (_root, _args, ctx) => ctx.services.researchService.isScheduledRefreshEnabled(),
+  }),
 }));
+
+builder.objectField(IdeaRef, 'nextScheduledRefresh', (t) =>
+  t.field({
+    type: 'DateTime',
+    nullable: true,
+    description: 'When the schedule next re-checks this plan; null when it will not.',
+    resolve: (idea, _args, ctx) => ctx.services.researchService.getNextScheduledRefresh(idea.id),
+  }),
+);
 
 builder.mutationFields((t) => ({
   // Here rather than with the idea entity: deleting an idea must stop its research run first.

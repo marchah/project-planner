@@ -13,6 +13,7 @@ const IdeaQuery = graphql(
   `
     query IdeaDetail($id: ID!) {
       researchEnabled
+      scheduledRefreshEnabled
       idea(id: $id) {
         __typename
         ... on QueryIdeaSuccess {
@@ -147,6 +148,7 @@ export function IdeaDialog({ id, onClose }: { id: string; onClose: () => void })
           key={idea.id}
           idea={idea}
           researchEnabled={data?.researchEnabled ?? false}
+          scheduleEnabled={data?.scheduledRefreshEnabled ?? false}
           onClose={() => dialogRef.current?.close()}
         />
       ) : (
@@ -168,10 +170,12 @@ type Idea = Extract<ResultOf<typeof IdeaQuery>['idea'], { __typename: 'QueryIdea
 function IdeaDetail({
   idea,
   researchEnabled,
+  scheduleEnabled,
   onClose,
 }: {
   idea: Idea;
   researchEnabled: boolean;
+  scheduleEnabled: boolean;
   onClose: () => void;
 }) {
   const [message, setMessage] = useState('');
@@ -196,7 +200,12 @@ function IdeaDetail({
           </p>
         ) : null}
         <IdeaText idea={idea} onMessage={setMessage} />
-        <ResearchSection idea={idea} enabled={researchEnabled} onMessage={setMessage} />
+        <ResearchSection
+          idea={idea}
+          enabled={researchEnabled}
+          scheduleEnabled={scheduleEnabled}
+          onMessage={setMessage}
+        />
         <footer className="flex justify-end border-t pt-4">
           <Button variant="ghost" size="sm" disabled={deleting} onClick={() => void remove()}>
             <span className="text-destructive">{deleting ? 'Deleting…' : 'Delete idea'}</span>

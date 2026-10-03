@@ -1,0 +1,1 @@
+ALTER TABLE `ideas` ADD `auto_refresh` integer DEFAULT true NOT NULL;
