@@ -30,6 +30,9 @@ export function getFeaturesServices({
       researchOnCapture: settings.RESEARCH_ON_CAPTURE,
       runTimeoutMs: settings.RESEARCH_RUN_TIMEOUT_MS,
       refreshDebounceMs: settings.REFRESH_DEBOUNCE_MS,
+      refreshSchedule: settings.REFRESH_SCHEDULE
+        ? { pattern: settings.REFRESH_SCHEDULE, timezone: settings.REFRESH_TIMEZONE }
+        : null,
       context: settings.RESEARCH_CONTEXT ?? null,
     },
   });

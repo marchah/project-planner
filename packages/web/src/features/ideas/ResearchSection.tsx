@@ -5,6 +5,7 @@ import { graphql, readFragment, type FragmentOf } from '../../graphql';
 import { DecisionsSection } from './DecisionsSection';
 import { Markdown } from './Markdown';
 import { QuestionsSection } from './QuestionsSection';
+import { ScheduleToggle } from './ScheduleToggle';
 import { IdeaResearchFragment, payloadError, type IdeaResearch, type OnMessage } from './research';
 import { formatDate, formatTime } from './status';
 
@@ -68,10 +69,12 @@ type Research = NonNullable<IdeaResearch['research']>;
 export function ResearchSection({
   idea: ideaRef,
   enabled,
+  scheduleEnabled,
   onMessage,
 }: {
   idea: FragmentOf<typeof IdeaResearchFragment>;
   enabled: boolean;
+  scheduleEnabled: boolean;
   onMessage: OnMessage;
 }) {
   const idea = readFragment(IdeaResearchFragment, ideaRef);
@@ -91,6 +94,15 @@ export function ResearchSection({
           ) : null}
         </div>
         <ResearchStatus idea={idea} enabled={enabled} onMessage={onMessage} />
+        {plan && scheduleEnabled ? (
+          <ScheduleToggle
+            key={String(idea.autoRefresh)}
+            ideaId={idea.id}
+            autoRefresh={idea.autoRefresh}
+            next={idea.nextScheduledRefresh}
+            onMessage={onMessage}
+          />
+        ) : null}
         {plan ? (
           <PlanBody ideaId={idea.id} ideaStatus={idea.status} plan={plan} onMessage={onMessage} />
         ) : null}

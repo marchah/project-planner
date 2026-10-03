@@ -9,7 +9,8 @@ build order.
 button on each note has Hermes research the idea and write a plan with clarifying questions. Each new
 idea gets a short title written by a model. Answer the questions and record decisions on the board,
 or have an agent do it over MCP; a few minutes after the last one, Hermes refreshes the plan with
-them. The weekly re-check comes next.
+them. Set `REFRESH_SCHEDULE` and every planned idea is also re-checked on that schedule for newer
+tools and versions; untick "Re-check this plan on schedule" on an idea to leave it out.
 
 Meant for a private network: there is no authentication. The repo holds no environment-specific
 values — every endpoint and name is configured through environment variables (see below).
@@ -68,6 +69,8 @@ status.
 | `RESEARCH_CONTEXT`        | unset                | Free text about you, added to every research prompt                                                                                 |
 | `RESEARCH_RUN_TIMEOUT_MS` | `900000`             | A research run is stopped and retried after this long                                                                               |
 | `REFRESH_DEBOUNCE_MS`     | `600000`             | After an answer or decision, how long to wait for more before refreshing the plan                                                   |
+| `REFRESH_SCHEDULE`        | unset                | Cron pattern for re-checking every planned idea, e.g. `0 10 * * 0` (Sundays 10:00). Unset: never on a schedule                      |
+| `REFRESH_TIMEZONE`        | `UTC`                | IANA time zone `REFRESH_SCHEDULE` is read in, e.g. `Europe/Paris`                                                                   |
 | `PUBLIC_URL`              | unset                | Base of the links the REST API returns; unset uses the caller's `Host`                                                              |
 | `DATABASE_URL`            | `file:./data/app.db` | SQLite (libsql) location                                                                                                            |
 

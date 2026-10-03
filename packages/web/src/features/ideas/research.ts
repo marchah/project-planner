@@ -5,6 +5,8 @@ export const IdeaResearchFragment = graphql(`
   fragment IdeaResearch on Idea {
     id
     status
+    autoRefresh
+    nextScheduledRefresh
     research {
       id
       kind

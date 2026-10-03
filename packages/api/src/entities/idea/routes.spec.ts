@@ -11,6 +11,7 @@ const idea: Idea = {
   status: IdeaStatus.CAPTURED,
   source: IdeaSource.SLACK,
   sourceUrl: null,
+  autoRefresh: true,
   createdAt: new Date('2026-09-22T00:00:00Z'),
   updatedAt: new Date('2026-09-22T00:00:00Z'),
 };

@@ -1,3 +1,4 @@
+import { Cron } from 'croner';
 import { ServiceUnavailableError } from '../../common/errors';
 import { logException, logInfo, logWarning } from '../../common/logger';
 import type { Maybe } from '../../common/types';
@@ -47,6 +48,7 @@ export const RETRY_DELAYS_MS = [5 * 60_000, 30 * 60_000];
 export const MAX_DISPATCH_FAILURES = 5;
 export const DISPATCH_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
 const MAX_SOURCES = 60;
+const NEVER = new Date(8.64e15);
 
 /** What the author has said about an idea, split by whether a plan has absorbed it yet. */
 interface AuthorInput {
@@ -73,6 +75,7 @@ export function researchServiceFactory({
   },
   researchJobService: {
     findActiveJobForIdea,
+    getLatestJobForIdea,
     findRunningJob,
     findNextDueJob,
     listIdeaIdsWithJobs,
@@ -92,8 +95,29 @@ export function researchServiceFactory({
   settings: ResearchSettings;
   now?: () => Date;
 }): ResearchService {
+  const schedule = settings.refreshSchedule
+    ? new Cron(settings.refreshSchedule.pattern, {
+        timezone: settings.refreshSchedule.timezone,
+        paused: true,
+      })
+    : null;
+  // The scheduled pass runs once per slot. Unset at start, so the first tick catches up a slot
+  // missed while the board was down.
+  let nextScheduledPassAt: Maybe<Date> = null;
+
   function isResearchEnabled(): boolean {
     return researchRunner.isConfigured();
+  }
+
+  function isScheduledRefreshEnabled(): boolean {
+    return schedule !== null && researchRunner.isConfigured();
+  }
+
+  async function getNextScheduledRefresh(ideaId: string): Promise<Maybe<Date>> {
+    if (!schedule || !researchRunner.isConfigured()) return null;
+    const idea = await getIdeaById(ideaId);
+    if (!isRefreshedOnSchedule(idea) || !(await getLatestPlanForIdea(idea.id))) return null;
+    return schedule.nextRun(now());
   }
 
   async function startResearch(ideaId: string): Promise<ResearchJob> {
@@ -156,6 +180,7 @@ export function researchServiceFactory({
       return;
     }
     if (settings.researchOnCapture) await queueCapturedIdeas(at);
+    await queueScheduledRefreshes(at);
     const next = await findNextDueJob(at);
     if (next) await startJob(next, at);
   }
@@ -186,6 +211,31 @@ export function researchServiceFactory({
       (idea) => idea.status === IdeaStatus.CAPTURED && !researched.has(idea.id),
     );
     for (const idea of waiting.reverse()) await queueIntake(idea, at);
+  }
+
+  // Due at a slot: a planned idea that is not shelved, done or muted, and that nothing has
+  // researched since the slot. Read from the jobs, so a restart needs no state of its own.
+  async function queueScheduledRefreshes(at: Date): Promise<void> {
+    if (!schedule || (nextScheduledPassAt && at < nextScheduledPassAt)) return;
+    // croner counts in whole seconds and leaves out the reference's own second.
+    const [slot] = schedule.previousRuns(1, new Date(at.getTime() + 1_000));
+    if (slot) {
+      let queued = 0;
+      for (const idea of await listIdeas()) {
+        if (!isRefreshedOnSchedule(idea)) continue;
+        const latest = await getLatestJobForIdea(idea.id);
+        if (!latest || latest.createdAt >= slot || isActive(latest)) continue;
+        if (!(await getLatestPlanForIdea(idea.id))) continue;
+        await queueRefresh(idea.id, at, at);
+        queued += 1;
+      }
+      if (queued > 0) {
+        logInfo(`scheduled refresh for ${slot.toISOString()}: ${String(queued)} queued`, {
+          tag: 'RESEARCH',
+        });
+      }
+    }
+    nextScheduledPassAt = schedule.nextRun(at) ?? NEVER;
   }
 
   // New input refreshes the plan after a pause, so a run of answers becomes one refresh. Without a
@@ -552,6 +602,8 @@ export function researchServiceFactory({
 
   return {
     isResearchEnabled,
+    isScheduledRefreshEnabled,
+    getNextScheduledRefresh,
     startResearch,
     answerQuestion,
     answerQuestionByNumber,
@@ -559,6 +611,14 @@ export function researchServiceFactory({
     deleteIdea,
     tickResearch,
   };
+}
+
+function isRefreshedOnSchedule(idea: Idea): boolean {
+  return idea.autoRefresh && idea.status !== IdeaStatus.SHELVED && idea.status !== IdeaStatus.DONE;
+}
+
+function isActive(job: ResearchJob): boolean {
+  return job.status === ResearchJobStatus.QUEUED || job.status === ResearchJobStatus.RUNNING;
 }
 
 function refreshedPlan(
