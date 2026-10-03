@@ -3,6 +3,7 @@ import { index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqli
 import { IdeaSource, IdeaStatus } from '../entities/idea/types';
 import type { PlanSource, PlanSuggestion, StackItem } from '../entities/plan/types';
 import { QuestionStatus } from '../entities/question/types';
+import type { DecisionSource } from '../entities/decision/types';
 import type { ResearchJobKind, ResearchJobStatus } from '../entities/research-job/types';
 
 // The persistence schema. This file + client.ts are the ONLY dialect-aware files: swapping to
@@ -64,6 +65,12 @@ export const questions = sqliteTable(
     answer: text('answer'),
     status: text('status').$type<QuestionStatus>().notNull().default(QuestionStatus.OPEN),
     askedInPlanId: text('asked_in_plan_id'),
+    // The job that asked it: finishing that job again (a retry, a restart) must not ask twice.
+    askedInJobId: text('asked_in_job_id'),
+    answeredAt: timestamp('answered_at'),
+    resolvedAt: timestamp('resolved_at'),
+    resolvedInPlanId: text('resolved_in_plan_id'),
+    appliedNote: text('applied_note'),
     createdAt: timestamp('created_at').notNull().default(now),
   },
   (t) => [uniqueIndex('questions_idea_number').on(t.ideaId, t.number)],
@@ -78,6 +85,11 @@ export const researchJobs = sqliteTable(
     status: text('status').$type<ResearchJobStatus>().notNull(),
     attempt: integer('attempt').notNull().default(1),
     dispatchFailures: integer('dispatch_failures').notNull().default(0),
+    // An attempt's prompt is built once and kept, so a retried dispatch sends the same body; answers
+    // and decisions up to inputAsOf are what it was told, anything later waits for the next run.
+    prompt: text('prompt'),
+    inputAsOf: timestamp('input_as_of'),
+    outcome: text('outcome'),
     runId: text('run_id'),
     repairUsed: integer('repair_used', { mode: 'boolean' }).notNull().default(false),
     notBefore: timestamp('not_before').notNull(),
@@ -96,4 +108,18 @@ export const researchJobs = sqliteTable(
     index('research_jobs_status').on(t.status, t.notBefore),
     index('research_jobs_idea').on(t.ideaId, t.createdAt),
   ],
+);
+
+export const decisions = sqliteTable(
+  'decisions',
+  {
+    id: text('id').primaryKey(),
+    ideaId: ideaId(),
+    text: text('text').notNull(),
+    source: text('source').$type<DecisionSource>().notNull(),
+    appliedInPlanId: text('applied_in_plan_id'),
+    appliedAt: timestamp('applied_at'),
+    createdAt: timestamp('created_at').notNull().default(now),
+  },
+  (t) => [index('decisions_idea').on(t.ideaId, t.createdAt)],
 );

@@ -69,6 +69,7 @@ export function researchJobRepositoryFactory({ db }: { db: Db }): ResearchJobRep
     ideaId: string,
     kind: ResearchJobKind,
     now: Date,
+    notBefore: Date,
   ): Promise<Maybe<ResearchJob>> {
     const row: ResearchJob = {
       id: randomUUID(),
@@ -77,9 +78,12 @@ export function researchJobRepositoryFactory({ db }: { db: Db }): ResearchJobRep
       status: ResearchJobStatus.QUEUED,
       attempt: 1,
       dispatchFailures: 0,
+      prompt: null,
+      inputAsOf: null,
+      outcome: null,
       runId: null,
       repairUsed: false,
-      notBefore: now,
+      notBefore,
       deadlineAt: null,
       startedAt: null,
       finishedAt: null,

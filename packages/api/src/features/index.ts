@@ -20,6 +20,7 @@ export function getFeaturesServices({
   thirdParty: ThirdPartyServices;
 }): FeaturesServices {
   const researchService = researchServiceFactory({
+    decisionService: entities.decisionService,
     ideaService: entities.ideaService,
     planService: entities.planService,
     questionService: entities.questionService,
@@ -28,10 +29,12 @@ export function getFeaturesServices({
     settings: {
       researchOnCapture: settings.RESEARCH_ON_CAPTURE,
       runTimeoutMs: settings.RESEARCH_RUN_TIMEOUT_MS,
+      refreshDebounceMs: settings.REFRESH_DEBOUNCE_MS,
       context: settings.RESEARCH_CONTEXT ?? null,
     },
   });
   const briefService = briefServiceFactory({
+    decisionService: entities.decisionService,
     ideaService: entities.ideaService,
     planService: entities.planService,
     questionService: entities.questionService,

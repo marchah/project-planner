@@ -15,6 +15,12 @@ QuestionRef.implement({
     defaultAnswer: t.exposeString('defaultAnswer'),
     answer: t.exposeString('answer', { nullable: true }),
     status: t.expose('status', { type: QuestionStatusRef }),
+    answeredAt: t.expose('answeredAt', { type: 'DateTime', nullable: true }),
+    resolvedAt: t.expose('resolvedAt', { type: 'DateTime', nullable: true }),
+    appliedNote: t.exposeString('appliedNote', {
+      nullable: true,
+      description: 'What applying the answer changed in the plan.',
+    }),
     createdAt: t.expose('createdAt', { type: 'DateTime' }),
   }),
 });

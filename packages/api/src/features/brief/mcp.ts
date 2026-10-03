@@ -27,14 +27,17 @@ export function registerBriefTools(
     {
       title: 'Get an idea',
       description:
-        "One idea with everything the board knows: the idea as its author wrote it, the current plan (Markdown, stack, sources, research notes), its questions with their defaults, and the state of its latest research run. The id is the `idea` parameter of the idea's board link (…/?idea=<id>).",
+        "One idea with everything the board knows: the idea as its author wrote it, the current plan (Markdown, stack, sources, research notes), its questions with their defaults and answers, the author's decisions, and the state of its latest research run. The id is the `idea` parameter of the idea's board link (…/?idea=<id>).",
       inputSchema: { id: z.string().min(1).describe('The idea id') },
     },
     async ({ id }) => asJson(present(await getIdeaBrief(id), ideaUrl)),
   );
 }
 
-function present({ idea, plan, questions, research }: IdeaBrief, ideaUrl: (id: string) => string) {
+function present(
+  { idea, plan, questions, decisions, research }: IdeaBrief,
+  ideaUrl: (id: string) => string,
+) {
   return {
     idea: {
       id: idea.id,
@@ -64,10 +67,21 @@ function present({ idea, plan, questions, research }: IdeaBrief, ideaUrl: (id: s
       defaultUntilAnswered: question.defaultAnswer,
       answer: question.answer,
       status: question.status,
+      answeredAt: question.answeredAt,
+      whatTheAnswerChanged: question.appliedNote,
+    })),
+    decisions: decisions.map((decision) => ({
+      decision: decision.text,
+      recordedBy: decision.source,
+      createdAt: decision.createdAt,
+      appliedToPlan: decision.appliedAt !== null,
     })),
     research: research && {
+      kind: research.kind,
       status: research.status,
       attempt: research.attempt,
+      notBefore: research.notBefore,
+      outcome: research.outcome,
       error: research.error,
       startedAt: research.startedAt,
       finishedAt: research.finishedAt,

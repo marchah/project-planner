@@ -2,14 +2,17 @@ import type { Maybe } from '../../common/types';
 
 export enum QuestionStatus {
   OPEN = 'OPEN',
+  /** Answered on the board or over MCP; the next refresh folds it into the plan. */
   ANSWERED = 'ANSWERED',
+  /** A refresh applied the answer. */
   RESOLVED = 'RESOLVED',
-  /** Never answered, and a later plan asked other questions instead. Kept so numbers are never reused. */
+  /** Never answered, and a re-research asked other questions instead. Kept so numbers are never reused. */
   SUPERSEDED = 'SUPERSEDED',
 }
 
 /** At most this many questions are open on an idea at once; more is an interrogation. */
 export const MAX_OPEN_QUESTIONS = 5;
+export const ANSWER_MAX_LENGTH = 4_000;
 
 export interface Question {
   id: string;
@@ -25,6 +28,12 @@ export interface Question {
   answer: Maybe<string>;
   status: QuestionStatus;
   askedInPlanId: Maybe<string>;
+  askedInJobId: Maybe<string>;
+  answeredAt: Maybe<Date>;
+  resolvedAt: Maybe<Date>;
+  resolvedInPlanId: Maybe<string>;
+  /** What applying the answer changed in the plan, in the refresh's words. */
+  appliedNote: Maybe<string>;
   createdAt: Date;
 }
 
@@ -35,27 +44,49 @@ export interface NewQuestion {
   defaultAnswer: string;
 }
 
+/** Applies one answer: the one given at `answeredAt`. A newer answer stays ANSWERED for the next refresh. */
+export interface QuestionResolution {
+  questionId: string;
+  answeredAt: Date;
+  appliedNote: Maybe<string>;
+}
+
+/** Who asked: the plan the questions belong to and the job whose finishing asked them. */
+export interface AskedIn {
+  planId: string;
+  jobId: string;
+}
+
 export interface QuestionRepository {
+  findQuestionById: (id: string) => Promise<Maybe<Question>>;
+  findQuestionByNumber: (ideaId: string, number: number) => Promise<Maybe<Question>>;
   listQuestionsByIdeaId: (ideaId: string) => Promise<Question[]>;
   countOpenQuestionsByIdeaId: (ideaId: string) => Promise<number>;
-  /** In one transaction: supersede the idea's unanswered open questions, then ask `questions`
-   * (at most `limit`) for `planId`. A no-op when that plan's questions were already asked. */
-  replaceUnansweredOpenQuestions: (
+  /** OPEN or ANSWERED → ANSWERED with this answer; null for any other status. */
+  answerQuestion: (id: string, answer: string, at: Date) => Promise<Maybe<Question>>;
+  /** Adds questions until `limit` are open, numbering on, in one transaction. A no-op returning
+   * what was asked when this job already asked. */
+  appendQuestions: (
     ideaId: string,
     questions: NewQuestion[],
-    planId: string,
+    askedIn: AskedIn,
     limit: number,
   ) => Promise<Question[]>;
+  /** ANSWERED → RESOLVED when the answer is still the one resolved; anything else is left alone. */
+  resolveQuestions: (resolutions: QuestionResolution[], planId: string, at: Date) => Promise<void>;
 }
 
 export interface QuestionService {
+  getQuestionById: (id: string) => Promise<Question>;
+  getQuestionByNumber: (ideaId: string, number: number) => Promise<Question>;
   /** Every question except superseded ones, in number order. */
   listQuestionsForIdea: (ideaId: string) => Promise<Question[]>;
   countOpenQuestionsForIdea: (ideaId: string) => Promise<number>;
-  /** Replaces the idea's unanswered open questions with `questions`, capped at MAX_OPEN_QUESTIONS. */
-  replaceOpenQuestions: (
+  answerQuestion: (id: string, answer: string, at: Date) => Promise<Question>;
+  appendQuestions: (
     ideaId: string,
     questions: NewQuestion[],
-    planId: string,
+    askedIn: AskedIn,
   ) => Promise<Question[]>;
+  resolveQuestions: (resolutions: QuestionResolution[], planId: string, at: Date) => Promise<void>;
 }

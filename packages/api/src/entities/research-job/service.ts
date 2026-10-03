@@ -43,8 +43,9 @@ export function researchJobServiceFactory({
     ideaId: string,
     kind: ResearchJobKind,
     now: Date,
+    notBefore: Date = now,
   ): Promise<{ job: ResearchJob; created: boolean }> {
-    const job = await researchJobRepository.insertJobUnlessActive(ideaId, kind, now);
+    const job = await researchJobRepository.insertJobUnlessActive(ideaId, kind, now, notBefore);
     if (job) return { job, created: true };
     const active = await researchJobRepository.findActiveJobByIdeaId(ideaId);
     if (!active) throw new ConflictError(`Could not queue research for idea ${ideaId}`);

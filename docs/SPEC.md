@@ -5,9 +5,10 @@ it, writes a plan and a few clarifying questions, and the board stores everythin
 questions whenever you are ready, and the plan is re-checked weekly for better approaches or
 newer tools.
 
-Status: **steps 1, 2 and 4 built**: board, capture (board, REST, Slack), model-written titles,
-research into a plan with clarifying questions, and a read-only MCP server. Answering questions and
-the weekly refresh (step 3) are next.
+Status: **steps 1, 2 and 4 built, and step 3 except its schedule**: board, capture (board, REST,
+Slack), model-written titles, research into a plan with clarifying questions, answers and decisions
+(on the board or over MCP) folded in by a debounced plan refresh, and an MCP server to read and
+answer. The weekly refresh schedule is next.
 
 ```
  Slack #ideas ──▶ Hermes (CT 121) ──POST /api/ideas──▶ ┌──────────────────────────────┐
@@ -52,7 +53,7 @@ Tailwind 4 SPA typed by gql.tada, and one container that serves both. Architectu
 GraphQL is awkward for an agent posting from a shell, so the API also exposes a small **REST surface
 at `/api/*`** for machine callers. It calls the same services as the resolvers, through a `routes.ts`
 role that the layer rule treats like a resolver (no db, no repository). The scheduler for research
-and refresh (§5) will run in-process, the way MealDeal's `INGEST_CRON` does.
+and refresh (§5) runs in-process, the way MealDeal's `INGEST_CRON` does.
 
 **Titles come from a model, at capture.** The API asks an OpenAI-compatible endpoint directly
 (`TITLE_MODEL_BASE_URL`; here, CT 120's llama.cpp) for a title of at most 8 words. It is not a Hermes run:
@@ -93,15 +94,15 @@ Hermes _can_ file directly for ad-hoc Slack asks like "add a question to the gro
 
 Replies in an idea's thread go to the Hermes agent, as in any channel. Its `#ideas` channel prompt
 (live config on CT 121) tells it that a thread discusses the idea in its first message, and how to
-read that idea from the board: the plugin's reply carries the `?idea=<id>` link. Until step 3 it
-cannot change the board, and says so.
+read that idea from the board: the plugin's reply carries the `?idea=<id>` link.
 
-It reads the board through the **board MCP server** (`/mcp`, built in step 2), registered in
-Hermes' `mcp_servers` the way kb-rag is: `get_idea` returns the idea with its current plan and
-questions. Step 3 adds tools to answer a question or record a decision. These are typed tool calls
-rather than `curl`, for the same reason capture is a plugin. The board stays the record: what is
-decided in the thread lands as an answer and triggers the same debounced re-plan as answering on
-the board.
+It reads the board through the **board MCP server** (`/mcp`), registered in Hermes' `mcp_servers`
+the way kb-rag is: `get_idea` returns the idea with its current plan, questions, answers and
+decisions. Two write tools, `answer_question` and `record_decision`, let it record what the author
+says in the thread. These are typed tool calls rather than `curl`, for the same reason capture is a
+plugin. The board stays the record: what is decided in the thread lands as an answer or a decision
+and triggers the same debounced refresh as answering on the board. Both tools tell the agent to
+record only what the author said in so many words, never its own suggestion.
 
 ## 3. Flows
 
@@ -113,10 +114,18 @@ automatically when `RESEARCH_ON_CAPTURE` is on, otherwise from the note's button
 versioned `stack`, up to 5 questions, and sources. **"Someone already built this — use it" is a
 first-class outcome**: the board suggests `shelved` with the link.
 
-**Answer.** You open a note and type answers in the question panel, or talk them through with
-Hermes in the idea's Slack thread, which records them through the board's MCP server (§2.4). Each
-answer pushes a refresh job 10 minutes out, so answering three questions in a row triggers one refresh, not three. This is the
-"answering re-plans it" behaviour no off-the-shelf tool had.
+**Answer and decide.** You open a note and type answers in the question panel, or record a
+decision (anything settled that no question covers: "use Postgres", "build it anyway"), or talk them
+through with Hermes in the idea's Slack thread, which records them through the board's MCP server
+(§2.4). Each answer or decision schedules a refresh 10 minutes out (`REFRESH_DEBOUNCE_MS`) and
+pushes a waiting one back, so answering three questions in a row triggers one refresh, not three.
+"Refresh now" skips the wait. This is the "answering re-plans it" behaviour no off-the-shelf tool
+had.
+
+An answer can be changed until a refresh has applied it; after that it is part of the plan, and
+changing course is a decision. Anything that arrives while a run is under way was not in its prompt,
+so it stays pending and gets a refresh of its own once that run finishes. A decision recorded
+before the first research is simply part of its prompt.
 
 **Weekly refresh.** Sunday 10:00 America/New_York, the board queues a refresh for every idea not
 `shelved`/`done`/muted. The run folds in answers, re-checks each item in the plan's `stack` for a
@@ -162,11 +171,13 @@ Built as `features/research` plus `src/worker.ts`, which calls one tick every
 
 ## 6. Run contract
 
-**Input** (intake, built): the raw idea, quoted verbatim; its title; today's date; and
-`RESEARCH_CONTEXT`, free text about you, when set. Step 3's refresh adds the current `plan_md` and
-`stack`, open questions, newly answered ones with their answers, and the titles of resolved ones,
-never past research or past plan versions, so every run fits CT 120's ~65k per-slot context
-whatever the idea's history.
+**Input.** Intake: the raw idea, quoted verbatim; its title; today's date; your decisions so far;
+and `RESEARCH_CONTEXT`, free text about you, when set. Refresh adds the current plan (`plan_md`,
+summary, stack and research notes), then what is new since it (answers and decisions to apply),
+what earlier plans already absorbed (to keep honouring and never re-ask), and the questions still
+open with their defaults. Never past plan versions, so a run's size does not grow with the idea's
+history. An attempt's prompt is built once, when it is first dispatched, and stored with the job;
+answers and decisions up to that instant are its input.
 
 **Output**, the entire final reply, nothing but JSON. Code fences or prose around it are tolerated:
 
@@ -183,15 +194,29 @@ whatever the idea's history.
 }
 ```
 
-Each research result is a new plan version. Its questions replace the idea's unanswered open ones,
-which are marked superseded rather than deleted, so question numbers are never reused. At most five
-are open at once. Step 3 adds `changed` and `resolved` for refresh runs.
+An intake's result is plan v1 and its questions. A refresh replies with the same fields plus:
+
+```json
+{
+  "changed": true,
+  "resolved": [{ "number": 2, "applied": "what this answer changed in the plan, or why nothing" }]
+}
+```
+
+With `changed: true` it is a new plan version: `plan_md` is required, an omitted `stack` or
+`research_md` keeps the current one, and its `sources` (only the pages read this time) are merged
+with the plan's. With `changed: false` no version is made. Either way the answers and decisions it
+was given are applied, each answer recording the plan version and the note in `resolved`, and its
+new questions are added. At most five are open at once, numbering on; numbers are never reused.
+Questions superseded by a re-research before step 3 keep their numbers too.
+
+The job records a one-line outcome (`Plan v3: …` or `No change to plan v2: …`) that the dialog
+shows as the last update.
 
 **Proposing an existing product is intended** (decided 2026-10-02). When one already covers the
 idea, research says so (`suggest_status: SHELVED`, with the product and its link), but the plan
 still keeps a conditional build path and nothing is shelved until you press Shelve. To build it
-anyway, say so in the idea and research again, or (step 3) answer the plan's question about what
-the project is for. The first three real runs all proposed an existing product, which is the
+anyway, record that as a decision, or answer the plan's question about what the project is for. The first three real runs all proposed an existing product, which is the
 behaviour wanted.
 
 The prompt also carries the standing rules: use tools rather than memory, prefer first-party
@@ -204,10 +229,11 @@ and do read-only research (no files, memories, skills, scheduled jobs or message
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ideas`         | id, title (model-written or yours; empty until one of you has written it), body (raw capture), status (`CAPTURED · RESEARCHING · PLANNED · BUILDING · SHELVED · DONE`), source (`WEB · SLACK · API`), source URL (Slack permalink), timestamps |
 | `plans`         | one row per version: idea, version, summary, `plan_md`, `stack` JSON, `research_md`, sources JSON, suggestion (`PLANNED · SHELVED`) + reason, the job that produced it. Plan history is these rows                                             |
-| `questions`     | idea, number (per idea, never reused), topic, text, why, default, answer, status (`OPEN · ANSWERED · RESOLVED · SUPERSEDED`), the plan that asked it                                                                                           |
-| `research_jobs` | idea, kind (`INTAKE`; step 3 adds refresh), status (`QUEUED · RUNNING · SUCCEEDED · FAILED`), attempt, Hermes run id, repair used, not-before, deadline, error, timestamps                                                                     |
+| `questions`     | idea, number (per idea, never reused), topic, text, why, default, answer, status (`OPEN · ANSWERED · RESOLVED · SUPERSEDED`), the plan and job that asked it, answered at, the plan that applied it and what it changed                        |
+| `decisions`     | idea, text, source (`BOARD · ASSISTANT`), the plan that applied it, timestamps                                                                                                                                                                 |
+| `research_jobs` | idea, kind (`INTAKE · REFRESH`), status (`QUEUED · RUNNING · SUCCEEDED · FAILED`), attempt, the attempt's prompt and input instant, Hermes run id, repair used, not-before, deadline, outcome, error, timestamps                               |
 
-Plans, questions and jobs are deleted with their idea (`ON DELETE CASCADE`; libsql enforces
+Plans, questions, decisions and jobs are deleted with their idea (`ON DELETE CASCADE`; libsql enforces
 foreign keys by default). Open questions show as a badge on the note rather than a status. Every
 question has a default, so no idea is blocked on you.
 
@@ -227,20 +253,14 @@ the `Host` header the caller used. Errors are JSON: 400 (invalid body, with Zod 
 413 (body over 64 KiB). Source `WEB` is reserved for the board's own form.
 
 **MCP** (built): `/mcp` is a stateless MCP server over streamable HTTP with JSON replies, for
-Hermes in an idea's Slack thread (§2.4). Two read-only tools: `list_ideas`, and `get_idea`, which
-returns the idea, its current plan (Markdown, stack, sources, research notes), its questions and its
-latest research job. Verified from CT 121 with Hermes' own client (`mcp` 2.0.0, protocol
-2025-11-25). Step 3 adds tools to answer a question and record a decision.
+Hermes in an idea's Slack thread (§2.4). Read: `list_ideas`, and `get_idea`, which returns the
+idea, its current plan (Markdown, stack, sources, research notes), its questions with answers, its
+decisions and its latest research job. Write: `answer_question` (idea id, question number, answer)
+and `record_decision` (idea id, text), each replying with when the plan will be refreshed. Verified
+from CT 121 with Hermes' own client (`mcp` 2.0.0, protocol 2025-11-25).
 
-Planned with step 3:
-
-```
-PATCH  /api/ideas/{id}             {status?, refresh?}
-POST   /api/ideas/{id}/questions   {text, why, default}     (ad-hoc, e.g. from Slack)
-PUT    /api/questions/{id}/answer  {answer}                 → schedules debounced refresh
-POST   /api/ideas/{id}/refresh                              → queue now
-GET    /api/ideas/{id}/versions                             → plan history
-```
+Answers and decisions need no REST endpoints: the board uses GraphQL and agents use MCP. The REST
+surface stays capture-only until a caller needs more.
 
 ## 9. UI
 
@@ -252,12 +272,14 @@ Built:
   The board polls every 5 s only while research is running.
 - **Dialog:** clicking a note opens it, and sets `?idea=<id>` so Slack links deep-link into it. It
   shows the raw idea, generate/regenerate title, inline edit, a status selector and delete; the
-  research state (queued, running since, retrying at, failed with the reason) with "Research this
-  idea / again / Try again"; the plan rendered as Markdown with its stack and summary; a "suggests
-  shelving" banner with a Shelve button; the questions with why and default; and the research notes
-  and sources, collapsed.
+  research state (queued, running since, an update scheduled for, retrying at, failed with the
+  reason, the last update's outcome) with "Research this idea / Refresh now / Update now / Try
+  again"; the plan rendered as Markdown with its stack and summary; a "suggests shelving" banner
+  with a Shelve button; the questions with why, default and an answer field (an answer can be edited
+  until a refresh applies it, then shows what it changed); decisions with a field to record one; and
+  the research notes and sources, collapsed.
 
-Later (step 3): answer fields on questions, "what changed last refresh", and refresh/mute buttons.
+Later, with the weekly schedule: muting an idea's refresh.
 
 ## 10. Deployment
 
@@ -297,8 +319,8 @@ Later (step 3): answer fields on questions, "what changed last refresh", and ref
 2. ✅ **Job runner + intake contract, plus the board's MCP server with read tools** (§2.4, §5–6).
    Research runs from the note's button; `RESEARCH_ON_CAPTURE` stays off until research quality is
    judged on real ideas.
-3. **Answers, debounce and refresh, plus MCP tools to answer and record decisions.** Weekly schedule
-   last.
+3. **Answers, debounce and refresh, plus MCP tools to answer and record decisions.** ✅ Built
+   except the weekly schedule, which comes next with per-idea muting.
 4. ✅ **Slack `#ideas` capture:** the idea-capture plugin on CT 121, live 2026-10-02.
 5. Optional: the `planner` Hermes profile, if §11's toolset concern shows up in practice.
 

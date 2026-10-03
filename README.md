@@ -7,7 +7,9 @@ build order.
 
 **Today:** the board, capture from the board, Slack or REST, edit, status, delete, and research: a
 button on each note has Hermes research the idea and write a plan with clarifying questions. Each new
-idea gets a short title written by a model; research and questions come next.
+idea gets a short title written by a model. Answer the questions and record decisions on the board,
+or have an agent do it over MCP; a few minutes after the last one, Hermes refreshes the plan with
+them. The weekly re-check comes next.
 
 Meant for a private network: there is no authentication. The repo holds no environment-specific
 values — every endpoint and name is configured through environment variables (see below).
@@ -38,8 +40,10 @@ curl http://localhost:4000/healthz
 
 ## MCP
 
-`/mcp` is a stateless MCP server (streamable HTTP) with two read-only tools for an agent discussing
-an idea: `list_ideas` and `get_idea` (the idea, its current plan, questions and research state).
+`/mcp` is a stateless MCP server (streamable HTTP) for an agent discussing an idea. It reads with
+`list_ideas` and `get_idea` (the idea, its current plan, questions and answers, decisions and
+research state), and writes back what the idea's author said with `answer_question` and
+`record_decision`, which schedule a plan refresh.
 
 The title model names the idea from `text` unless `title` is given; if the model is unreachable the
 idea is still saved, with `"title": null`, and can be titled later from the board. `source` is
@@ -63,6 +67,7 @@ status.
 | `RESEARCH_ON_CAPTURE`     | `false`              | `true` researches new ideas automatically instead of waiting for the button                                                         |
 | `RESEARCH_CONTEXT`        | unset                | Free text about you, added to every research prompt                                                                                 |
 | `RESEARCH_RUN_TIMEOUT_MS` | `900000`             | A research run is stopped and retried after this long                                                                               |
+| `REFRESH_DEBOUNCE_MS`     | `600000`             | After an answer or decision, how long to wait for more before refreshing the plan                                                   |
 | `PUBLIC_URL`              | unset                | Base of the links the REST API returns; unset uses the caller's `Host`                                                              |
 | `DATABASE_URL`            | `file:./data/app.db` | SQLite (libsql) location                                                                                                            |
 

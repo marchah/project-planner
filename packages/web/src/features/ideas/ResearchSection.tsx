@@ -1,8 +1,11 @@
+import type { ReactNode } from 'react';
 import { useMutation } from 'urql';
 import { Button } from '../../components/ui/button';
 import { graphql, readFragment, type FragmentOf } from '../../graphql';
+import { DecisionsSection } from './DecisionsSection';
 import { Markdown } from './Markdown';
-import { IdeaResearchFragment, type IdeaResearch } from './research';
+import { QuestionsSection } from './QuestionsSection';
+import { IdeaResearchFragment, payloadError, type IdeaResearch, type OnMessage } from './research';
 import { formatDate, formatTime } from './status';
 
 const StartResearchMutation = graphql(`
@@ -15,7 +18,9 @@ const StartResearchMutation = graphql(`
           status
           research {
             id
+            kind
             status
+            notBefore
           }
         }
       }
@@ -58,16 +63,7 @@ const ShelveIdeaMutation = graphql(`
 `);
 
 type Plan = NonNullable<IdeaResearch['latestPlan']>;
-type Question = IdeaResearch['questions'][number];
-type OnMessage = (message: string) => void;
-
-function payloadError(
-  payload: { __typename: string; message?: string } | undefined,
-  fallback: string | undefined,
-): string {
-  if (payload && !payload.__typename.endsWith('Success')) return payload.message ?? 'Failed';
-  return payload ? '' : (fallback ?? 'Failed');
-}
+type Research = NonNullable<IdeaResearch['research']>;
 
 export function ResearchSection({
   idea: ideaRef,
@@ -99,7 +95,8 @@ export function ResearchSection({
           <PlanBody ideaId={idea.id} ideaStatus={idea.status} plan={plan} onMessage={onMessage} />
         ) : null}
       </section>
-      <QuestionList questions={idea.questions} hasPlan={Boolean(plan)} />
+      <QuestionsSection questions={idea.questions} hasPlan={Boolean(plan)} onMessage={onMessage} />
+      <DecisionsSection ideaId={idea.id} decisions={idea.decisions} onMessage={onMessage} />
       {plan ? <ResearchNotes plan={plan} /> : null}
     </>
   );
@@ -129,29 +126,16 @@ function ResearchStatus({
       </Button>
     ) : null;
 
-  if (research?.status === 'RUNNING') {
-    return (
-      <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-        <span className="size-2 animate-pulse rounded-full bg-sky-500" aria-hidden="true" />
-        Researching since {formatTime(research.startedAt ?? research.notBefore)}. This usually takes
-        a few minutes.
-      </p>
-    );
-  }
+  if (research?.status === 'RUNNING') return <RunningNote research={research} />;
   if (research?.status === 'QUEUED') {
-    return (
-      <p className="text-sm text-muted-foreground" role="status">
-        {research.attempt > 1 || research.error
-          ? `${research.error ?? 'The last attempt failed'}. Retrying at ${formatTime(research.notBefore)}.`
-          : 'Queued for research.'}
-      </p>
-    );
+    return <QueuedNote research={research} action={start('Update now')} />;
   }
   if (research?.status === 'FAILED') {
     return (
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm">
         <span className="text-destructive">
-          Research failed: {research.error ?? 'unknown error'}
+          {research.kind === 'REFRESH' ? 'Plan update failed' : 'Research failed'}:{' '}
+          {research.error ?? 'unknown error'}
         </span>
         {start('Try again')}
       </div>
@@ -165,7 +149,46 @@ function ResearchStatus({
       </div>
     );
   }
-  return <div className="flex justify-end">{start('Research again')}</div>;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+      <span>
+        {research?.kind === 'REFRESH' && research.outcome
+          ? `Last update ${formatDate(research.finishedAt ?? research.notBefore)}: ${research.outcome}`
+          : null}
+      </span>
+      {start('Refresh now')}
+    </div>
+  );
+}
+
+function RunningNote({ research }: { research: Research }) {
+  return (
+    <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
+      <span className="size-2 animate-pulse rounded-full bg-sky-500" aria-hidden="true" />
+      {research.kind === 'REFRESH' ? 'Updating the plan' : 'Researching'} since{' '}
+      {formatTime(research.startedAt ?? research.notBefore)}. This usually takes a few minutes.
+    </p>
+  );
+}
+
+function QueuedNote({ research, action }: { research: Research; action: ReactNode }) {
+  if (research.attempt > 1 || research.error) {
+    return (
+      <p className="text-sm text-muted-foreground" role="status">
+        {research.error ?? 'The last attempt failed'}. Retrying at {formatTime(research.notBefore)}.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+      <p role="status">
+        {research.kind === 'REFRESH'
+          ? `Plan update scheduled for ${formatTime(research.notBefore)}, so you can add more first.`
+          : 'Queued for research.'}
+      </p>
+      {research.kind === 'REFRESH' ? action : null}
+    </div>
+  );
 }
 
 function PlanBody({
@@ -230,44 +253,6 @@ function ShelveBanner({
         Shelve
       </Button>
     </div>
-  );
-}
-
-function QuestionList({ questions, hasPlan }: { questions: Question[]; hasPlan: boolean }) {
-  const open = questions.filter((question) => question.status === 'OPEN').length;
-  return (
-    <section aria-labelledby="questions-section" className="space-y-2">
-      <h3 id="questions-section" className="font-semibold">
-        Questions{open > 0 ? ` (${String(open)} open)` : ''}
-      </h3>
-      {questions.length === 0 ? (
-        <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-          {hasPlan ? 'No open questions.' : 'Questions arrive with the plan.'}
-        </p>
-      ) : (
-        <>
-          <ol className="space-y-3">
-            {questions.map((question) => (
-              <li key={question.id} className="rounded-md border p-3 text-sm">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Q{question.number} · {question.topic}
-                </p>
-                <p className="mt-1 font-medium">{question.text}</p>
-                <p className="mt-1 text-muted-foreground">{question.why}</p>
-                <p className="mt-2">
-                  <span className="text-muted-foreground">Until answered: </span>
-                  {question.defaultAnswer}
-                </p>
-              </li>
-            ))}
-          </ol>
-          <p className="text-xs text-muted-foreground">
-            Answering questions comes next; for now, talk them through in the idea&apos;s Slack
-            thread.
-          </p>
-        </>
-      )}
-    </section>
   );
 }
 
