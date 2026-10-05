@@ -86,10 +86,10 @@ const EnvSchema = z.object({
   PUBLIC_URL: optional(z.url().transform(stripTrailingSlash)),
 });
 
-// eslint-disable-next-line no-restricted-properties -- the one allowed read of process.env
 // An empty variable means unset, so the compose file can pass every `${VAR:-}` through and leave the
 // defaults here.
 const ENV = EnvSchema.parse(
+  // eslint-disable-next-line no-restricted-properties -- the one allowed read of process.env
   Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== '')),
 );
 
