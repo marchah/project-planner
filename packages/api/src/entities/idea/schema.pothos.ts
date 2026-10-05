@@ -14,6 +14,9 @@ IdeaRef.implement({
     status: t.expose('status', { type: IdeaStatusRef }),
     source: t.expose('source', { type: IdeaSourceRef }),
     sourceUrl: t.exposeString('sourceUrl', { nullable: true }),
+    autoRefresh: t.exposeBoolean('autoRefresh', {
+      description: 'Whether the refresh schedule re-checks its plan.',
+    }),
     createdAt: t.expose('createdAt', { type: 'DateTime' }),
     updatedAt: t.expose('updatedAt', { type: 'DateTime' }),
   }),
@@ -56,12 +59,14 @@ builder.mutationFields((t) => ({
       title: t.arg.string({ required: false, validate: { maxLength: 200 } }),
       body: t.arg.string({ required: false, validate: { maxLength: 20_000 } }),
       status: t.arg({ type: IdeaStatusRef, required: false }),
+      autoRefresh: t.arg.boolean({ required: false }),
     },
     resolve: (_root, args, ctx) =>
       ctx.services.ideaService.updateIdea(args.id, {
         ...(args.title != null && { title: args.title }),
         ...(args.body != null && { body: args.body }),
         ...(args.status != null && { status: args.status }),
+        ...(args.autoRefresh != null && { autoRefresh: args.autoRefresh }),
       }),
   }),
   generateIdeaTitle: t.field({

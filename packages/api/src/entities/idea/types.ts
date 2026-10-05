@@ -23,6 +23,8 @@ export interface Idea {
   status: IdeaStatus;
   source: IdeaSource;
   sourceUrl: Maybe<string>;
+  /** Its plan is re-checked when the refresh schedule comes round; off mutes that. */
+  autoRefresh: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,7 +44,7 @@ export interface CaptureIdeaInput {
   sourceUrl: Maybe<string>;
 }
 
-export type IdeaPatch = Partial<Pick<Idea, 'title' | 'body' | 'status'>>;
+export type IdeaPatch = Partial<Pick<Idea, 'title' | 'body' | 'status' | 'autoRefresh'>>;
 
 /** Names an idea from its text. Resolves `null` when no model is configured; rejects when one is
  * configured but fails. */

@@ -20,6 +20,7 @@ export function ideaRepositoryFactory({ db }: { db: Db }): IdeaRepository {
     const row: Idea = {
       id: randomUUID(),
       status: IdeaStatus.CAPTURED,
+      autoRefresh: true,
       createdAt: now,
       updatedAt: now,
       ...idea,

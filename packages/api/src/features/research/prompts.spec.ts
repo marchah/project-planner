@@ -19,6 +19,7 @@ const idea: Idea = {
   status: IdeaStatus.CAPTURED,
   source: IdeaSource.SLACK,
   sourceUrl: null,
+  autoRefresh: true,
   createdAt: T0,
   updatedAt: T0,
 };
