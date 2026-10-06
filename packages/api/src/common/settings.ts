@@ -7,9 +7,8 @@ import { z } from 'zod';
 // so they visibly mirror the environment variables. Validated once at startup so a
 // misconfigured deploy fails fast with a clear message.
 
-// An empty variable means unset, so a compose file can pass `${VAR:-}` through without a default.
 function optional<T extends z.ZodType>(schema: T) {
-  return z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+  return schema.optional();
 }
 
 function stripTrailingSlash(url: string): string {
@@ -87,8 +86,12 @@ const EnvSchema = z.object({
   PUBLIC_URL: optional(z.url().transform(stripTrailingSlash)),
 });
 
-// eslint-disable-next-line no-restricted-properties -- the one allowed read of process.env
-const ENV = EnvSchema.parse(process.env);
+// An empty variable means unset, so the compose file can pass every `${VAR:-}` through and leave the
+// defaults here.
+const ENV = EnvSchema.parse(
+  // eslint-disable-next-line no-restricted-properties -- the one allowed read of process.env
+  Object.fromEntries(Object.entries(process.env).filter(([, value]) => value !== '')),
+);
 
 export const settings = {
   NODE_ENV: ENV.NODE_ENV,

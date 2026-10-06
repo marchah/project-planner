@@ -39,15 +39,25 @@ services:
       # Only for servers that need them (hosted APIs); llama.cpp ignores the model name.
       TITLE_MODEL: ${TITLE_MODEL:-}
       TITLE_MODEL_API_KEY: ${TITLE_MODEL_API_KEY:-}
+      TITLE_MODEL_TIMEOUT_MS: ${TITLE_MODEL_TIMEOUT_MS:-}
       # Hermes Agent's API (…:8642), which runs the research. Empty: research is off.
       HERMES_API_URL: ${HERMES_API_URL:-}
       HERMES_API_KEY: ${HERMES_API_KEY:-}
       # Model provider for research runs, e.g. openai-codex. Empty: Hermes' default.
       HERMES_PROVIDER: ${HERMES_PROVIDER:-}
+      HERMES_REQUEST_TIMEOUT_MS: ${HERMES_REQUEST_TIMEOUT_MS:-}
       # 'true' researches every new idea automatically; otherwise use the button on the note.
       RESEARCH_ON_CAPTURE: ${RESEARCH_ON_CAPTURE:-false}
       # Free text about you, added to every research prompt.
       RESEARCH_CONTEXT: ${RESEARCH_CONTEXT:-}
+      RESEARCH_RUN_TIMEOUT_MS: ${RESEARCH_RUN_TIMEOUT_MS:-}
+      RESEARCH_POLL_INTERVAL_MS: ${RESEARCH_POLL_INTERVAL_MS:-}
+      # After an answer or a decision, how long to wait for more before refreshing the plan (ms).
+      REFRESH_DEBOUNCE_MS: ${REFRESH_DEBOUNCE_MS:-}
+      # Cron pattern for re-checking every planned idea, e.g. '0 10 * * 0' (Sundays 10:00), read in
+      # REFRESH_TIMEZONE (an IANA zone; empty: UTC). Empty: never on a schedule.
+      REFRESH_SCHEDULE: ${REFRESH_SCHEDULE:-}
+      REFRESH_TIMEZONE: ${REFRESH_TIMEZONE:-}
     healthcheck:
       test:
         - CMD-SHELL
