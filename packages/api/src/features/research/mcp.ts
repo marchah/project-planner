@@ -7,7 +7,7 @@ import { ResearchJobStatus, type ResearchJob } from '../../entities/research-job
 import type { ResearchService } from './types';
 
 const ONLY_THE_AUTHOR =
-  "Only record what the idea's author said in so many words; never your own suggestion, a guess at what they meant, or what someone else said.";
+  "Only record what the idea's author said in so many words, and in their own words rather than a summary; never your own suggestion, a guess at what they meant, or what someone else said.";
 
 // Tools for an agent discussing an idea to write back what its author decided.
 export function registerResearchTools(
@@ -20,11 +20,16 @@ export function registerResearchTools(
     'answer_question',
     {
       title: 'Answer a question',
-      description: `Saves the author's answer to one of an idea's open questions (Q1, Q2… in get_idea) and schedules a plan refresh that folds it in. Answering again replaces the answer until a refresh has applied it; after that, use record_decision to change course. ${ONLY_THE_AUTHOR}`,
+      description: `Saves the author's answer to one of an idea's open questions (Q1, Q2… in get_idea) and schedules a plan refresh that folds it in. Answering again replaces the answer until a refresh has applied it; after that, use record_decision to change course. When the author says they don't know yet or haven't decided ("no idea yet", "not sure"), don't call this: the question stays open and the plan keeps its default. ${ONLY_THE_AUTHOR}`,
       inputSchema: {
         idea_id: z.string().min(1).describe('The idea id'),
         number: z.number().int().positive().describe('The question number: 2 for Q2'),
-        answer: z.string().trim().min(1).max(ANSWER_MAX_LENGTH).describe("The author's answer"),
+        answer: z
+          .string()
+          .trim()
+          .min(1)
+          .max(ANSWER_MAX_LENGTH)
+          .describe("The author's answer, in their words"),
       },
     },
     async ({ idea_id, number, answer }) => {
@@ -49,7 +54,7 @@ export function registerResearchTools(
           .trim()
           .min(1)
           .max(DECISION_MAX_LENGTH)
-          .describe('The decision, in one or two sentences, as the author put it'),
+          .describe('The decision, in the words the author put it'),
       },
     },
     async ({ idea_id, decision }) => {
