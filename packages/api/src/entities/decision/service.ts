@@ -1,4 +1,4 @@
-import { ValidationError } from '../../common/errors';
+import { ConflictError, NotFoundError, ValidationError } from '../../common/errors';
 import {
   DECISION_MAX_LENGTH,
   type Decision,
@@ -12,6 +12,12 @@ export function decisionServiceFactory({
 }: {
   decisionRepository: DecisionRepository;
 }): DecisionService {
+  async function getDecisionById(id: string): Promise<Decision> {
+    const decision = await decisionRepository.findDecisionById(id);
+    if (!decision) throw new NotFoundError(`No decision with id ${id}`);
+    return decision;
+  }
+
   function listDecisionsForIdea(ideaId: string): Promise<Decision[]> {
     return decisionRepository.listDecisionsByIdeaId(ideaId);
   }
@@ -34,5 +40,22 @@ export function decisionServiceFactory({
     return decisionRepository.markDecisionsApplied(ids, planId, at);
   }
 
-  return { listDecisionsForIdea, recordDecision, markDecisionsApplied };
+  async function deleteDecision(id: string): Promise<Decision> {
+    await getDecisionById(id);
+    const deleted = await decisionRepository.deleteUnappliedDecision(id);
+    if (!deleted) {
+      throw new ConflictError(
+        'This decision is already in the plan; record a new decision to change course',
+      );
+    }
+    return deleted;
+  }
+
+  return {
+    getDecisionById,
+    listDecisionsForIdea,
+    recordDecision,
+    markDecisionsApplied,
+    deleteDecision,
+  };
 }

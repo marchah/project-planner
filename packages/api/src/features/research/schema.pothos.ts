@@ -65,6 +65,15 @@ builder.mutationFields((t) => ({
       return ctx.services.ideaService.getIdeaById(question.ideaId);
     },
   }),
+  deleteDecision: t.field({
+    type: IdeaRef,
+    errors: { types: [NotFoundError, ConflictError] },
+    args: { id: t.arg.id({ required: true }) },
+    resolve: async (_root, args, ctx) => {
+      const decision = await ctx.services.researchService.deleteDecision(args.id);
+      return ctx.services.ideaService.getIdeaById(decision.ideaId);
+    },
+  }),
   recordDecision: t.field({
     type: IdeaRef,
     errors: { types: [NotFoundError, ValidationError] },

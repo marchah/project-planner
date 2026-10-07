@@ -22,6 +22,7 @@ export interface Decision {
 }
 
 export interface DecisionRepository {
+  findDecisionById: (id: string) => Promise<Maybe<Decision>>;
   listDecisionsByIdeaId: (ideaId: string) => Promise<Decision[]>;
   createDecision: (
     ideaId: string,
@@ -30,9 +31,12 @@ export interface DecisionRepository {
     at: Date,
   ) => Promise<Decision>;
   markDecisionsApplied: (ids: string[], planId: string, at: Date) => Promise<void>;
+  /** Deletes it unless a plan has applied it; null when nothing was deleted. */
+  deleteUnappliedDecision: (id: string) => Promise<Maybe<Decision>>;
 }
 
 export interface DecisionService {
+  getDecisionById: (id: string) => Promise<Decision>;
   listDecisionsForIdea: (ideaId: string) => Promise<Decision[]>;
   recordDecision: (
     ideaId: string,
@@ -41,4 +45,6 @@ export interface DecisionService {
     at: Date,
   ) => Promise<Decision>;
   markDecisionsApplied: (ids: string[], planId: string, at: Date) => Promise<void>;
+  /** Only before a plan applies it: after that the plan carries it, and a new decision changes course. */
+  deleteDecision: (id: string) => Promise<Decision>;
 }

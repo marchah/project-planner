@@ -122,8 +122,9 @@ pushes a waiting one back, so answering three questions in a row triggers one re
 "Refresh now" skips the wait. This is the "answering re-plans it" behaviour no off-the-shelf tool
 had.
 
-An answer can be changed until a refresh has applied it; after that it is part of the plan, and
-changing course is a decision. Anything that arrives while a run is under way was not in its prompt,
+An answer can be changed until a refresh has applied it, and a decision removed from the board until
+research has been given it; after that it is part of the plan, and changing course is a new
+decision. Anything that arrives while a run is under way was not in its prompt,
 so it stays pending and gets a refresh of its own once that run finishes. A decision recorded
 before the first research is simply part of its prompt.
 
@@ -282,7 +283,7 @@ Built:
   reason, the last update's outcome) with "Research this idea / Refresh now / Update now / Try
   again"; the plan rendered as Markdown with its stack and summary; a "suggests shelving" banner
   with a Shelve button; the questions with why, default and an answer field (an answer can be edited
-  until a refresh applies it, then shows what it changed); decisions with a field to record one; a
+  until a refresh applies it, then shows what it changed); decisions with a field to record one and a Remove button until a plan has taken one in; a
   "Re-check this plan on schedule" box with the next date, when a schedule is set; and the research
   notes and sources, collapsed.
 

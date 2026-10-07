@@ -56,4 +56,16 @@ describe('decisionService', () => {
       { appliedInPlanId: 'plan-2', appliedAt: T0 },
     ]);
   });
+
+  it('deletes a decision until a plan applies it', async () => {
+    const draft = await service.recordDecision(ideaId, 'Typo', DecisionSource.BOARD, T0);
+    const kept = await service.recordDecision(ideaId, 'Use Postgres', DecisionSource.BOARD, T0);
+    expect(await service.deleteDecision(draft.id)).toMatchObject({ text: 'Typo' });
+    await service.markDecisionsApplied([kept.id], 'plan-2', T0);
+    await expect(service.deleteDecision(kept.id)).rejects.toThrow('already in the plan');
+    await expect(service.deleteDecision(draft.id)).rejects.toThrow('No decision');
+    expect((await service.listDecisionsForIdea(ideaId)).map((d) => d.text)).toEqual([
+      'Use Postgres',
+    ]);
+  });
 });

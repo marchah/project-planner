@@ -36,6 +36,37 @@ const RecordDecisionMutation = graphql(`
   }
 `);
 
+const DeleteDecisionMutation = graphql(`
+  mutation DeleteDecision($id: ID!) {
+    deleteDecision(id: $id) {
+      __typename
+      ... on MutationDeleteDecisionSuccess {
+        data {
+          id
+          decisions {
+            id
+          }
+          research {
+            id
+            kind
+            status
+            notBefore
+          }
+        }
+      }
+      ... on NotFoundError {
+        message
+      }
+      ... on ConflictError {
+        message
+      }
+      ... on ServerError {
+        message
+      }
+    }
+  }
+`);
+
 type Decision = IdeaResearch['decisions'][number];
 
 export function DecisionsSection({
@@ -58,19 +89,40 @@ export function DecisionsSection({
       {decisions.length > 0 ? (
         <ul className="space-y-2">
           {decisions.map((decision) => (
-            <li key={decision.id} className="rounded-md border p-3 text-sm">
-              <p className="whitespace-pre-wrap">{decision.text}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {formatDate(decision.createdAt)} ·{' '}
-                {decision.source === 'ASSISTANT' ? 'recorded by an assistant' : 'on the board'} ·{' '}
-                {decision.appliedAt ? 'in the plan' : 'goes into the next plan update'}
-              </p>
-            </li>
+            <DecisionItem key={decision.id} decision={decision} onMessage={onMessage} />
           ))}
         </ul>
       ) : null}
       <DecisionForm ideaId={ideaId} onMessage={onMessage} />
     </section>
+  );
+}
+
+function DecisionItem({ decision, onMessage }: { decision: Decision; onMessage: OnMessage }) {
+  const [{ fetching: removing }, deleteDecision] = useMutation(DeleteDecisionMutation);
+
+  async function remove() {
+    if (!window.confirm(`Remove this decision?\n\n${decision.text}`)) return;
+    const result = await deleteDecision({ id: decision.id });
+    onMessage(payloadError(result.data?.deleteDecision, result.error?.message));
+  }
+
+  return (
+    <li className="flex items-start justify-between gap-2 rounded-md border p-3 text-sm">
+      <div className="min-w-0">
+        <p className="whitespace-pre-wrap">{decision.text}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {formatDate(decision.createdAt)} ·{' '}
+          {decision.source === 'ASSISTANT' ? 'recorded by an assistant' : 'on the board'} ·{' '}
+          {decision.appliedAt ? 'in the plan' : 'goes into the next plan update'}
+        </p>
+      </div>
+      {decision.appliedAt ? null : (
+        <Button variant="ghost" size="sm" disabled={removing} onClick={() => void remove()}>
+          {removing ? 'Removing…' : 'Remove'}
+        </Button>
+      )}
+    </li>
   );
 }
 

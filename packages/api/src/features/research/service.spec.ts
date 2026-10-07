@@ -761,6 +761,33 @@ describe('answers, decisions and refreshes', () => {
     );
   });
 
+  it('removes a decision until research is given it', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner);
+    const idea = await researched(fake, service);
+    clock = at(1);
+    const typo = await service.recordDecision(idea.id, 'Use Postgress', DecisionSource.BOARD);
+    clock = at(2);
+    await service.deleteDecision(typo.decision.id);
+    clock = at(3);
+    const meant = await service.recordDecision(idea.id, 'Use Postgres', DecisionSource.BOARD);
+    await tickAt(service, 13);
+    expect(fake.started[1]?.prompt).toContain('- Decision: Use Postgres');
+    expect(fake.started[1]?.prompt).not.toContain('Postgress');
+
+    clock = at(14);
+    await expect(service.deleteDecision(meant.decision.id)).rejects.toThrow('running now');
+    const later = await service.recordDecision(idea.id, 'No mobile app', DecisionSource.BOARD);
+    await service.deleteDecision(later.decision.id);
+
+    fake.finish('run-2', { output: refreshReply() });
+    await tickAt(service, 15);
+    await expect(service.deleteDecision(meant.decision.id)).rejects.toThrow('already in the plan');
+    expect((await decisions.listDecisionsForIdea(idea.id)).map((d) => d.text)).toEqual([
+      'Use Postgres',
+    ]);
+  });
+
   it('with research off, saves answers and decisions without queuing anything', async () => {
     const fake = fakeRunner();
     const idea = await researched(fake, makeService(fake.runner));

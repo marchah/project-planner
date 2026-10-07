@@ -2,9 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { decisions } from '../../db/schema';
 import type { Db } from '../../db/client';
+import type { Maybe } from '../../common/types';
 import type { Decision, DecisionRepository, DecisionSource } from './types';
 
 export function decisionRepositoryFactory({ db }: { db: Db }): DecisionRepository {
+  async function findDecisionById(id: string): Promise<Maybe<Decision>> {
+    const rows = await db.select().from(decisions).where(eq(decisions.id, id)).limit(1);
+    return rows[0] ?? null;
+  }
+
   async function listDecisionsByIdeaId(ideaId: string): Promise<Decision[]> {
     return db
       .select()
@@ -40,5 +46,19 @@ export function decisionRepositoryFactory({ db }: { db: Db }): DecisionRepositor
       .where(and(inArray(decisions.id, ids), isNull(decisions.appliedAt)));
   }
 
-  return { listDecisionsByIdeaId, createDecision, markDecisionsApplied };
+  async function deleteUnappliedDecision(id: string): Promise<Maybe<Decision>> {
+    const rows = await db
+      .delete(decisions)
+      .where(and(eq(decisions.id, id), isNull(decisions.appliedAt)))
+      .returning();
+    return rows[0] ?? null;
+  }
+
+  return {
+    findDecisionById,
+    listDecisionsByIdeaId,
+    createDecision,
+    markDecisionsApplied,
+    deleteUnappliedDecision,
+  };
 }
