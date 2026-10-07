@@ -1,7 +1,8 @@
 import { settings } from '../common/settings';
 import type { IdeaTitleGenerator } from '../entities/idea/types';
-import type { ResearchRunner } from '../features/research/types';
+import type { ResearchNotifier, ResearchRunner } from '../features/research/types';
 import { hermesAdapterFactory } from './hermes/adapter';
+import { slackAdapterFactory } from './slack/adapter';
 import { titleModelAdapterFactory } from './title-model/adapter';
 
 // Builds every external-provider adapter. Adapters implement ports the slices declare, so this
@@ -9,11 +10,13 @@ import { titleModelAdapterFactory } from './title-model/adapter';
 export interface ThirdPartyServices {
   titleGenerator: IdeaTitleGenerator;
   researchRunner: ResearchRunner;
+  researchNotifier: ResearchNotifier;
 }
 
 export function getThirdPartyServices(): ThirdPartyServices {
   const titleGenerator = titleModelAdapterFactory({ config: settings });
   const researchRunner = hermesAdapterFactory({ config: settings });
+  const researchNotifier = slackAdapterFactory({ config: settings });
 
-  return { titleGenerator, researchRunner };
+  return { titleGenerator, researchRunner, researchNotifier };
 }

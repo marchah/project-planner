@@ -88,3 +88,12 @@ export class TooManyRequestsError<Data = ErrorData> extends ServerError<Data> {
     this.name = 'TooManyRequestsError';
   }
 }
+
+// fetch reports every network failure as "fetch failed" and keeps the reason on `cause`.
+export function fetchFailureReason(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  if (error.name === 'TimeoutError') return error.message;
+  const cause = error.cause;
+  if (cause instanceof Error) return 'code' in cause ? String(cause.code) : cause.message;
+  return error.message;
+}

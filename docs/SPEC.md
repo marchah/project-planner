@@ -137,6 +137,13 @@ researched since the slot. The run folds in pending answers, re-checks each item
 no rotation: the timeout that forced it is gone, and runs are serialised anyway (§5). Unset, nothing
 runs on a schedule: each run spends model quota, so it is opt-in like `RESEARCH_ON_CAPTURE`.
 
+**Hearing back.** An idea captured from Slack gets the result in its thread, posted by the board
+with Hermes' bot token (`SLACK_BOT_TOKEN`): the first plan's summary with its questions to answer
+right there, a refresh that changed the plan with any new questions, and research that failed for
+good. A re-check that changed nothing says nothing, so the weekly schedule is quiet unless something
+moved. Ideas captured on the board are not announced anywhere. A message is posted once the job is
+recorded as finished, and a failure to post is logged, never retried, and never fails the research.
+
 ## 4. The question rules (carried over; these are the core of the tool)
 
 - **Every question carries a default, and the default is the reversible option.** An unanswered
