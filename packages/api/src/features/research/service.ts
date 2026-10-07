@@ -1,5 +1,5 @@
 import { Cron } from 'croner';
-import { ServiceUnavailableError } from '../../common/errors';
+import { ConflictError, ServiceUnavailableError } from '../../common/errors';
 import { logException, logInfo, logWarning } from '../../common/logger';
 import type { Maybe } from '../../common/types';
 import type { Decision, DecisionService, DecisionSource } from '../../entities/decision/types';
@@ -63,7 +63,13 @@ interface AuthorInput {
 }
 
 export function researchServiceFactory({
-  decisionService: { listDecisionsForIdea, recordDecision: saveDecision, markDecisionsApplied },
+  decisionService: {
+    getDecisionById,
+    listDecisionsForIdea,
+    recordDecision: saveDecision,
+    markDecisionsApplied,
+    deleteDecision: deleteDecisionRecord,
+  },
   ideaService: { getIdeaById, listIdeas, updateIdea, deleteIdea: deleteIdeaRecord },
   planService: { getLatestPlanForIdea, findPlanForJob, savePlan },
   questionService: {
@@ -161,6 +167,18 @@ export function researchServiceFactory({
     const at = now();
     const decision = await saveDecision(ideaId, text, source, at);
     return { decision, refresh: await scheduleRefresh(ideaId, at) };
+  }
+
+  async function deleteDecision(decisionId: string): Promise<Decision> {
+    const decision = await getDecisionById(decisionId);
+    // Once a run's prompt holds it, that run writes it into the plan whatever happens here.
+    const active = await findActiveJobForIdea(decision.ideaId);
+    if (active?.inputAsOf && decision.createdAt <= active.inputAsOf) {
+      throw new ConflictError(
+        'Research running now was given this decision; once it finishes, record a new decision to change course',
+      );
+    }
+    return deleteDecisionRecord(decisionId);
   }
 
   async function deleteIdea(ideaId: string): Promise<void> {
@@ -608,6 +626,7 @@ export function researchServiceFactory({
     answerQuestion,
     answerQuestionByNumber,
     recordDecision,
+    deleteDecision,
     deleteIdea,
     tickResearch,
   };

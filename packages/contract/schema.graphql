@@ -64,6 +64,7 @@ enum IdeaStatus {
 type Mutation {
   answerQuestion(answer: String!, id: ID!): MutationAnswerQuestionResult!
   captureIdea(text: String!, title: String): MutationCaptureIdeaResult!
+  deleteDecision(id: ID!): MutationDeleteDecisionResult!
   deleteIdea(id: ID!): MutationDeleteIdeaResult!
   generateIdeaTitle(id: ID!): MutationGenerateIdeaTitleResult!
   recordDecision(ideaId: ID!, text: String!): MutationRecordDecisionResult!
@@ -80,6 +81,12 @@ type MutationAnswerQuestionSuccess {
 union MutationCaptureIdeaResult = MutationCaptureIdeaSuccess | ServerError | ValidationError
 
 type MutationCaptureIdeaSuccess {
+  data: Idea!
+}
+
+union MutationDeleteDecisionResult = ConflictError | MutationDeleteDecisionSuccess | NotFoundError | ServerError
+
+type MutationDeleteDecisionSuccess {
   data: Idea!
 }
 
