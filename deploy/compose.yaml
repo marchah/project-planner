@@ -58,6 +58,9 @@ services:
       # REFRESH_TIMEZONE (an IANA zone; empty: UTC). Empty: never on a schedule.
       REFRESH_SCHEDULE: ${REFRESH_SCHEDULE:-}
       REFRESH_TIMEZONE: ${REFRESH_TIMEZONE:-}
+      # Slack bot token with chat:write (Hermes' own works): research results go to the thread an
+      # idea was captured from. Empty: no Slack messages.
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
     healthcheck:
       test:
         - CMD-SHELL

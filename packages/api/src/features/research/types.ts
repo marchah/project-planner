@@ -32,6 +32,36 @@ export interface ResearchRunner {
   stopRun: (runId: string) => Promise<void>;
 }
 
+export enum ResearchNewsKind {
+  /** An idea's first plan. */
+  PLAN_READY = 'PLAN_READY',
+  /** A refresh made a new plan version. */
+  PLAN_CHANGED = 'PLAN_CHANGED',
+  /** Research gave up after its retries. */
+  FAILED = 'FAILED',
+}
+
+/** Something worth telling the idea's author, where they captured it. */
+export interface ResearchNews {
+  kind: ResearchNewsKind;
+  /** Where the idea was captured, e.g. a Slack permalink: the notifier replies there if it can. */
+  sourceUrl: Maybe<string>;
+  ideaUrl: Maybe<string>;
+  planVersion: Maybe<number>;
+  /** The plan's summary, or what the refresh changed. */
+  summary: Maybe<string>;
+  /** A first plan's open questions, or the ones a refresh asked. */
+  questions: { number: number; text: string }[];
+  shelveReason: Maybe<string>;
+  error: Maybe<string>;
+}
+
+/** Tells the author what research produced, e.g. in the idea's Slack thread. Rejects when it could
+ * not deliver; resolves without doing anything when it has nowhere to say it. */
+export interface ResearchNotifier {
+  announceResearch: (news: ResearchNews) => Promise<void>;
+}
+
 export interface ResearchSettings {
   /** Research ideas still CAPTURED without being asked to. */
   researchOnCapture: boolean;
@@ -42,6 +72,8 @@ export interface ResearchSettings {
   refreshSchedule: Maybe<{ pattern: string; timezone: string }>;
   /** Free text about the person and their setup, appended to every research prompt. */
   context: Maybe<string>;
+  /** The idea's link on the board, when the board knows its own address. */
+  ideaUrl: (ideaId: string) => Maybe<string>;
 }
 
 /** What was saved, and the research job that will fold it into the plan, if one will. */

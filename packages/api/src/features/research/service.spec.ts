@@ -23,7 +23,10 @@ import {
 } from '../../entities/research-job/types';
 import { MAX_ATTEMPTS, MAX_DISPATCH_FAILURES, researchServiceFactory } from './service';
 import {
+  ResearchNewsKind,
   ResearchRunState,
+  type ResearchNews,
+  type ResearchNotifier,
   type ResearchRun,
   type ResearchRunner,
   type ResearchService,
@@ -146,6 +149,7 @@ function makeService(
     researchOnCapture?: boolean;
     questionService?: QuestionService;
     refreshSchedule?: string;
+    notifier?: ResearchNotifier;
   } = {},
 ) {
   return researchServiceFactory({
@@ -155,6 +159,7 @@ function makeService(
     questionService: over.questionService ?? questions,
     researchJobService: jobs,
     researchRunner: runner,
+    researchNotifier: over.notifier ?? { announceResearch: () => Promise.resolve() },
     settings: {
       researchOnCapture: over.researchOnCapture ?? false,
       runTimeoutMs: 15 * 60_000,
@@ -163,6 +168,7 @@ function makeService(
         ? { pattern: over.refreshSchedule, timezone: 'UTC' }
         : null,
       context: 'Self-hosts everything.',
+      ideaUrl: (id) => `http://board/?idea=${id}`,
     },
     now: () => clock,
   });
@@ -872,5 +878,108 @@ describe('scheduled refresh', () => {
     await ideas.updateIdea(idea.id, { autoRefresh: true });
     expect(unscheduled.isScheduledRefreshEnabled()).toBe(false);
     expect(await unscheduled.getNextScheduledRefresh(idea.id)).toBeNull();
+  });
+});
+
+describe('research news', () => {
+  const PERMALINK = 'https://example.slack.com/archives/C0123/p1790965715402789';
+
+  function recordingNotifier() {
+    const told: ResearchNews[] = [];
+    const notifier: ResearchNotifier = {
+      announceResearch: (news) => {
+        told.push(news);
+        return Promise.resolve();
+      },
+    };
+    return { told, notifier };
+  }
+
+  const captureFromSlack = () =>
+    ideas.captureIdea({
+      text: 'a board for my ideas',
+      title: null,
+      source: IdeaSource.SLACK,
+      sourceUrl: PERMALINK,
+    });
+
+  it('tells the author about a first plan and a changed one, not a re-check that changed nothing', async () => {
+    const fake = fakeRunner();
+    const { told, notifier } = recordingNotifier();
+    const service = makeService(fake.runner, { notifier });
+    const idea = await captureFromSlack();
+    await service.startResearch(idea.id);
+    await tickAt(service, 0);
+    fake.finish('run-1', { output: reply() });
+    await tickAt(service, 1);
+    expect(told).toEqual([
+      {
+        kind: ResearchNewsKind.PLAN_READY,
+        sourceUrl: PERMALINK,
+        ideaUrl: `http://board/?idea=${idea.id}`,
+        planVersion: 1,
+        summary: 'Build it on SQLite.',
+        questions: [{ number: 1, text: 'Multi-user?' }],
+        shelveReason: null,
+        error: null,
+      },
+    ]);
+
+    clock = at(2);
+    await service.startResearch(idea.id);
+    await tickAt(service, 2);
+    fake.finish('run-2', { output: refreshReply({ changed: false, plan_md: null }) });
+    await tickAt(service, 3);
+    expect(told).toHaveLength(1);
+
+    clock = at(4);
+    await service.startResearch(idea.id);
+    await tickAt(service, 4);
+    fake.finish('run-3', {
+      output: refreshReply({
+        questions: askMany(1),
+        suggest_status: 'SHELVED',
+        shelve_reason: 'Use Trello',
+      }),
+    });
+    await tickAt(service, 5);
+    expect(told[1]).toMatchObject({
+      kind: ResearchNewsKind.PLAN_CHANGED,
+      planVersion: 2,
+      summary: 'Switch to Postgres.',
+      questions: [{ number: 2, text: 'Question 0?' }],
+      shelveReason: 'Use Trello',
+    });
+  });
+
+  it('tells the author when research fails for good', async () => {
+    const fake = fakeRunner();
+    const { told, notifier } = recordingNotifier();
+    const service = makeService(fake.runner, { notifier });
+    const idea = await captureFromSlack();
+    await service.startResearch(idea.id);
+    for (let i = 0; i < MAX_DISPATCH_FAILURES; i += 1) {
+      fake.scripts.push('throw');
+      await tickAt(service, i * 60);
+    }
+    expect(told).toHaveLength(1);
+    expect(told[0]).toMatchObject({ kind: ResearchNewsKind.FAILED, sourceUrl: PERMALINK });
+    expect(told[0]?.error).toContain('could not start the run');
+  });
+
+  it('a message that does not get through never fails the research', async () => {
+    const fake = fakeRunner();
+    const service = makeService(fake.runner, {
+      notifier: { announceResearch: () => Promise.reject(new Error('Slack refused')) },
+    });
+    const idea = await captureFromSlack();
+    await service.startResearch(idea.id);
+    await tickAt(service, 0);
+    fake.finish('run-1', { output: reply() });
+    await tickAt(service, 1);
+    expect(await jobs.getLatestJobForIdea(idea.id)).toMatchObject({
+      status: ResearchJobStatus.SUCCEEDED,
+    });
+    expect((await ideas.getIdeaById(idea.id)).status).toBe(IdeaStatus.PLANNED);
   });
 });

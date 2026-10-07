@@ -10,7 +10,10 @@ button on each note has Hermes research the idea and write a plan with clarifyin
 idea gets a short title written by a model. Answer the questions and record decisions on the board,
 or have an agent do it over MCP; a few minutes after the last one, Hermes refreshes the plan with
 them. Set `REFRESH_SCHEDULE` and every planned idea is also re-checked on that schedule for newer
-tools and versions; untick "Re-check this plan on schedule" on an idea to leave it out.
+tools and versions; untick "Re-check this plan on schedule" on an idea to leave it out. With
+`SLACK_BOT_TOKEN` set, an idea captured from Slack hears back in its thread: when its first plan is
+ready (with the questions to answer there), when a refresh changes the plan, and when research
+fails.
 
 Meant for a private network: there is no authentication. The repo holds no environment-specific
 values — every endpoint and name is configured through environment variables (see below).
@@ -71,7 +74,8 @@ status.
 | `REFRESH_DEBOUNCE_MS`     | `600000`             | After an answer or decision, how long to wait for more before refreshing the plan                                                   |
 | `REFRESH_SCHEDULE`        | unset                | Cron pattern for re-checking every planned idea, e.g. `0 10 * * 0` (Sundays 10:00). Unset: never on a schedule                      |
 | `REFRESH_TIMEZONE`        | `UTC`                | IANA time zone `REFRESH_SCHEDULE` is read in, e.g. `Europe/Paris`                                                                   |
-| `PUBLIC_URL`              | unset                | Base of the links the REST API returns; unset uses the caller's `Host`                                                              |
+| `SLACK_BOT_TOKEN`         | unset                | Slack bot token with `chat:write` (Hermes' own works): research results are posted in the thread an idea was captured from          |
+| `PUBLIC_URL`              | unset                | Base of the links the REST API returns and Slack messages carry; unset uses the caller's `Host` (Slack messages then have no link)  |
 | `DATABASE_URL`            | `file:./data/app.db` | SQLite (libsql) location                                                                                                            |
 
 A local model titles an idea in well under a second, so capture waits for it. In Docker, use full

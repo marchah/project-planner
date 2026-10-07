@@ -1,5 +1,6 @@
 import { settings } from '../common/settings';
 import type { EntitiesServices } from '../entities';
+import { ideaUrl } from '../entities/idea/routes';
 import type { ThirdPartyServices } from '../third-party';
 import { briefServiceFactory } from './brief/service';
 import type { BriefService } from './brief/types';
@@ -26,6 +27,7 @@ export function getFeaturesServices({
     questionService: entities.questionService,
     researchJobService: entities.researchJobService,
     researchRunner: thirdParty.researchRunner,
+    researchNotifier: thirdParty.researchNotifier,
     settings: {
       researchOnCapture: settings.RESEARCH_ON_CAPTURE,
       runTimeoutMs: settings.RESEARCH_RUN_TIMEOUT_MS,
@@ -34,6 +36,7 @@ export function getFeaturesServices({
         ? { pattern: settings.REFRESH_SCHEDULE, timezone: settings.REFRESH_TIMEZONE }
         : null,
       context: settings.RESEARCH_CONTEXT ?? null,
+      ideaUrl: (id) => (settings.PUBLIC_URL ? ideaUrl(settings.PUBLIC_URL, id) : null),
     },
   });
   const briefService = briefServiceFactory({

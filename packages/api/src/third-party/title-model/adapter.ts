@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fetchFailureReason } from '../../common/errors';
 import type { Maybe } from '../../common/types';
 import type { IdeaTitleGenerator } from '../../entities/idea/types';
 
@@ -68,7 +69,7 @@ export function titleModelAdapterFactory({
       }),
       signal: AbortSignal.timeout(config.TITLE_MODEL_TIMEOUT_MS),
     }).catch((error: unknown) => {
-      throw new Error(`Title model unreachable at ${url}: ${failureReason(error)}`, {
+      throw new Error(`Title model unreachable at ${url}: ${fetchFailureReason(error)}`, {
         cause: error,
       });
     });
@@ -84,13 +85,4 @@ export function titleModelAdapterFactory({
   }
 
   return { generateIdeaTitle };
-}
-
-// fetch reports every network failure as "fetch failed" and keeps the reason on `cause`.
-function failureReason(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
-  if (error.name === 'TimeoutError') return error.message;
-  const cause = error.cause;
-  if (cause instanceof Error) return 'code' in cause ? String(cause.code) : cause.message;
-  return error.message;
 }

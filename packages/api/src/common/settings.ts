@@ -82,6 +82,9 @@ const EnvSchema = z.object({
     .refine(isTimeZone, 'REFRESH_TIMEZONE is not an IANA time zone, e.g. Europe/Paris'),
   // Free text about you and your setup, appended to every research prompt.
   RESEARCH_CONTEXT: optional(z.string()),
+  // A Slack bot token with chat:write (Hermes' own works): research results are posted in the
+  // thread an idea was captured from. Unset: no Slack messages.
+  SLACK_BOT_TOKEN: optional(z.string()),
   // Base for links handed to machine callers; defaults to the Host header they reached us on.
   PUBLIC_URL: optional(z.url().transform(stripTrailingSlash)),
 });
@@ -101,6 +104,7 @@ export const settings = {
   DATABASE_URL: ENV.DATABASE_URL,
   MIGRATIONS_DIR: ENV.MIGRATIONS_DIR,
   PUBLIC_URL: ENV.PUBLIC_URL,
+  SLACK_BOT_TOKEN: ENV.SLACK_BOT_TOKEN,
   HERMES_API_URL: ENV.HERMES_API_URL,
   HERMES_API_KEY: ENV.HERMES_API_KEY,
   HERMES_PROVIDER: ENV.HERMES_PROVIDER,

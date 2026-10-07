@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { fetchFailureReason } from '../../common/errors';
 import type { Maybe } from '../../common/types';
 import {
   ResearchRunState,
@@ -91,18 +92,11 @@ export function hermesAdapterFactory({ config }: { config: HermesConfig }): Rese
       },
       signal: AbortSignal.timeout(config.HERMES_REQUEST_TIMEOUT_MS),
     }).catch((error: unknown) => {
-      throw new Error(`Hermes unreachable at ${url}: ${failureReason(error)}`, { cause: error });
+      throw new Error(`Hermes unreachable at ${url}: ${fetchFailureReason(error)}`, {
+        cause: error,
+      });
     });
   }
 
   return { isConfigured, startRun, getRun, stopRun };
-}
-
-// fetch reports every network failure as "fetch failed" and keeps the reason on `cause`.
-function failureReason(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
-  if (error.name === 'TimeoutError') return error.message;
-  const cause = error.cause;
-  if (cause instanceof Error) return 'code' in cause ? String(cause.code) : cause.message;
-  return error.message;
 }

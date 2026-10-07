@@ -33,9 +33,12 @@ import {
   type RefreshReplyData,
 } from './prompts';
 import {
+  ResearchNewsKind,
   ResearchRunState,
   type AnsweredQuestion,
   type RecordedDecision,
+  type ResearchNews,
+  type ResearchNotifier,
   type ResearchRunner,
   type ResearchService,
   type ResearchSettings,
@@ -49,6 +52,14 @@ export const MAX_DISPATCH_FAILURES = 5;
 export const DISPATCH_RETRY_DELAYS_MS = [60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
 const MAX_SOURCES = 60;
 const NEVER = new Date(8.64e15);
+
+/** What a finished job did, and what to tell the author about it, if anything. */
+interface Applied {
+  outcome: string;
+  news: Maybe<Announcement>;
+}
+
+type Announcement = Omit<ResearchNews, 'sourceUrl' | 'ideaUrl'>;
 
 /** What the author has said about an idea, split by whether a plan has absorbed it yet. */
 interface AuthorInput {
@@ -89,6 +100,7 @@ export function researchServiceFactory({
     updateJob,
   },
   researchRunner,
+  researchNotifier,
   settings,
   now = () => new Date(),
 }: {
@@ -98,6 +110,7 @@ export function researchServiceFactory({
   questionService: QuestionService;
   researchJobService: ResearchJobService;
   researchRunner: ResearchRunner;
+  researchNotifier: ResearchNotifier;
   settings: ResearchSettings;
   now?: () => Date;
 }): ResearchService {
@@ -462,18 +475,24 @@ export function researchServiceFactory({
     at: Date,
     pastDeadline: boolean,
   ): Promise<void> {
+    let applied: Applied;
     try {
       const input = await readAuthorInput(job.ideaId, job.inputAsOf ?? job.startedAt ?? at);
-      const outcome =
+      applied =
         'changed' in reply
           ? await applyRefresh(job, reply, input, at)
           : await applyIntake(job, reply, input, at);
       await updateJob(
         job.id,
-        { status: ResearchJobStatus.SUCCEEDED, finishedAt: at, error: null, outcome },
+        {
+          status: ResearchJobStatus.SUCCEEDED,
+          finishedAt: at,
+          error: null,
+          outcome: applied.outcome,
+        },
         at,
       );
-      logInfo(`research for idea ${job.ideaId} finished: ${outcome}`, { tag: 'RESEARCH' });
+      logInfo(`research for idea ${job.ideaId} finished: ${applied.outcome}`, { tag: 'RESEARCH' });
     } catch (error: unknown) {
       logException(error, { tag: 'RESEARCH', extra: { jobId: job.id } });
       const reason = `could not save the result: ${(error as Error).message}`;
@@ -482,6 +501,8 @@ export function researchServiceFactory({
       else await updateJob(job.id, { error: reason }, at);
       return;
     }
+    // Told once the job is marked done, so finishing it again after a restart cannot repeat it.
+    if (applied.news) await announce(job.ideaId, applied.news);
     await refreshForLateInput(job.ideaId, at);
   }
 
@@ -490,7 +511,7 @@ export function researchServiceFactory({
     reply: IntakeReplyData,
     input: AuthorInput,
     at: Date,
-  ): Promise<string> {
+  ): Promise<Applied> {
     const plan =
       (await findPlanForJob(job.id)) ??
       (await savePlan({
@@ -503,7 +524,7 @@ export function researchServiceFactory({
         ...toSuggestion(reply),
         jobId: job.id,
       }));
-    await appendQuestions(job.ideaId, reply.questions.map(toNewQuestion), {
+    const asked = await appendQuestions(job.ideaId, reply.questions.map(toNewQuestion), {
       planId: plan.id,
       jobId: job.id,
     });
@@ -516,7 +537,10 @@ export function researchServiceFactory({
     if (idea.status === IdeaStatus.CAPTURED || idea.status === IdeaStatus.RESEARCHING) {
       await updateIdea(idea.id, { status: IdeaStatus.PLANNED });
     }
-    return `Plan v${String(plan.version)}: ${plan.summary}`;
+    return {
+      outcome: `Plan v${String(plan.version)}: ${plan.summary}`,
+      news: planNews(ResearchNewsKind.PLAN_READY, plan, plan.summary, asked),
+    };
   }
 
   async function applyRefresh(
@@ -524,7 +548,7 @@ export function researchServiceFactory({
     reply: RefreshReplyData,
     input: AuthorInput,
     at: Date,
-  ): Promise<string> {
+  ): Promise<Applied> {
     const base = input.plan;
     if (!base) throw new Error('the plan it refreshed is gone');
     const plan =
@@ -553,14 +577,32 @@ export function researchServiceFactory({
       plan.id,
       at,
     );
-    await appendQuestions(job.ideaId, reply.questions.map(toNewQuestion), {
+    const asked = await appendQuestions(job.ideaId, reply.questions.map(toNewQuestion), {
       planId: plan.id,
       jobId: job.id,
     });
     const version = `v${String(plan.version)}`;
+    // A re-check that changed nothing is not news.
     return plan.jobId === job.id
-      ? `Plan ${version}: ${reply.summary}`
-      : `No change to plan ${version}: ${reply.summary}`;
+      ? {
+          outcome: `Plan ${version}: ${reply.summary}`,
+          news: planNews(ResearchNewsKind.PLAN_CHANGED, plan, reply.summary, asked),
+        }
+      : { outcome: `No change to plan ${version}: ${reply.summary}`, news: null };
+  }
+
+  // Best effort: a message that does not get through never fails the research behind it.
+  async function announce(ideaId: string, news: Announcement): Promise<void> {
+    try {
+      const idea = await getIdeaById(ideaId);
+      await researchNotifier.announceResearch({
+        ...news,
+        sourceUrl: idea.sourceUrl,
+        ideaUrl: settings.ideaUrl(idea.id),
+      });
+    } catch (error: unknown) {
+      logException(error, { tag: 'RESEARCH', extra: { ideaId } });
+    }
   }
 
   async function failAttempt(job: ResearchJob, reason: string, at: Date): Promise<void> {
@@ -603,6 +645,14 @@ export function researchServiceFactory({
       tag: 'RESEARCH',
       extra: { reason },
     });
+    await announce(job.ideaId, {
+      kind: ResearchNewsKind.FAILED,
+      planVersion: null,
+      summary: null,
+      questions: [],
+      shelveReason: null,
+      error: reason,
+    });
     const idea = await getIdeaById(job.ideaId).catch(() => null);
     if (idea?.status === IdeaStatus.RESEARCHING) {
       const plan = await getLatestPlanForIdea(idea.id);
@@ -638,6 +688,22 @@ function isRefreshedOnSchedule(idea: Idea): boolean {
 
 function isActive(job: ResearchJob): boolean {
   return job.status === ResearchJobStatus.QUEUED || job.status === ResearchJobStatus.RUNNING;
+}
+
+function planNews(
+  kind: ResearchNewsKind,
+  plan: Plan,
+  summary: string,
+  asked: Question[],
+): Announcement {
+  return {
+    kind,
+    planVersion: plan.version,
+    summary,
+    questions: asked.map((question) => ({ number: question.number, text: question.text })),
+    shelveReason: plan.suggestion === PlanSuggestion.SHELVED ? plan.shelveReason : null,
+    error: null,
+  };
 }
 
 function refreshedPlan(
