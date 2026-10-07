@@ -120,6 +120,12 @@ describe('buildIntakePrompt', () => {
     expect(prompt).not.toContain('ABOUT THE AUTHOR');
     expect(prompt).not.toContain('DECISIONS');
   });
+
+  it('tells research not to ask what the author description already answers', () => {
+    const prompt = buildIntakePrompt(idea, T0, 'Homelab: an always-on Proxmox server.');
+    expect(prompt).toContain('ABOUT THE AUTHOR (use it to fit the plan to them):\nHomelab:');
+    expect(prompt).toContain('Never ask what ABOUT THE AUTHOR already answers');
+  });
 });
 
 describe('buildRefreshPrompt', () => {
@@ -145,5 +151,6 @@ describe('buildRefreshPrompt', () => {
     expect(prompt).toContain('THE CURRENT PLAN (v3, written 2026-10-02)');
     expect(prompt).toContain('Stack: SQLite 3.50 (storage)');
     expect(prompt).toContain('at most 3, never one already asked');
+    expect(prompt).not.toContain('Never ask what ABOUT THE AUTHOR');
   });
 });
