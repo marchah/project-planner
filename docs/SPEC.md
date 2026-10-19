@@ -11,22 +11,22 @@ a debounced plan refresh, a scheduled re-check of every planned idea, and an MCP
 answer.
 
 ```
- Slack #ideas ──▶ Hermes (CT 121) ──POST /api/ideas──▶ ┌──────────────────────────────┐
-  "idea text"      one curl, instant                   │  project-planner (VM 300)    │
+ Slack #ideas ──▶ Hermes ───────────POST /api/ideas──▶ ┌──────────────────────────────┐
+  "idea text"      one curl, instant                   │  project-planner (Docker)    │
                                                        │  web board + REST + SQLite   │
                                                        │  in-process job runner       │
                    ┌──── POST /v1/runs ────────────────┤  · intake on capture         │
  Hermes API :8642  │     (research one idea)           │  · refresh on answer (10 min │
- (CT 121)          │                                   │    debounce)                 │
+                   │                                   │    debounce)                 │
    web_search      └──── GET /v1/runs/{id} ───────────▶│  · weekly refresh, Sun 10:00 │
    web_extract           poll → JSON output            └──────────────────────────────┘
-                                                              ▲ http://docker-host:4200
+                                                              ▲ http://<docker host>:4200
                                                               you, in a browser
 ```
 
 ## 1. What was verified, not assumed
 
-Measured against CT 121 on 2026-09-22, Hermes **v0.21.3** (upstream `820a8083`), default gateway
+Measured on 2026-09-22 against a self-hosted Hermes **v0.21.3** (upstream `820a8083`), default gateway
 provider:
 
 | Question                                                   | Result                         | How it was checked                                                                                                               |
@@ -43,7 +43,7 @@ grow the context window, which is why §6 keeps every run's input small.
 
 ## 2. Components
 
-### 2.1 The board — VM 300, a Compose stack on `:4200`
+### 2.1 The board — a Compose stack on `:4200`
 
 Built from the `graphql-clean-arch` boilerplate (CognitiveStack `boilerplates/`), the same shape as
 MealDeal: a pnpm monorepo with a GraphQL Yoga + Pothos API over Drizzle/SQLite, a React 19 + Vite +
@@ -56,25 +56,26 @@ role that the layer rule treats like a resolver (no db, no repository). The sche
 and refresh (§5) runs in-process, the way MealDeal's `INGEST_CRON` does.
 
 **Titles come from a model, at capture.** The API asks an OpenAI-compatible endpoint directly
-(`TITLE_MODEL_BASE_URL`; here, CT 120's llama.cpp) for a title of at most 8 words. It is not a Hermes run:
-a title needs no tools, and it takes 0.3–0.7 s on CT 120 (measured from VM 300 on five ideas of
+(`TITLE_MODEL_BASE_URL`, for example a local llama.cpp server) for a title of at most 8 words. It is not a Hermes run:
+a title needs no tools, and it took 0.3–0.7 s on a local llama.cpp server (measured on five ideas of
 different shapes) against ~16 s for even a trivial `/v1/runs` round trip, so capture can wait for it
 and the Slack reply can quote it. If the model is unreachable the idea is saved untitled and can be
 titled from the board later; a capture is never lost to the title.
 
-### 2.2 Capture — Slack `#ideas`, through the idea-capture plugin on CT 121
+### 2.2 Capture — Slack `#ideas`, through a Hermes plugin
 
-Live since 2026-10-02: Proxmox repo `hermes/idea-capture/`. A Hermes plugin on the
+Live since 2026-10-02. The plugin, `idea-capture`, lives with the Hermes deployment, not in this repo.
+A Hermes plugin on the
 `pre_gateway_dispatch` hook saves each top-level message from an allowed user through
 `POST /api/ideas`, exactly as written, and replies in its thread with the title and a link to the
 note. The gateway skips the message, so no agent turn runs.
 
 It replaced the original plan, a channel prompt asking the agent to `curl` each message: the text
 arrives verbatim instead of being rebuilt inside a shell command, it takes about a second instead
-of an agent turn, and it does not depend on CT 120's chat model.
+of an agent turn, and it does not depend on the agent's chat model.
 
-**Capture-first still holds.** The idea is stored _before_ any research starts, so CT 120's
-prompt-cache corruption (7 incidents so far, onset anywhere from 50 min to 42 h) can cost a
+**Capture-first still holds.** The idea is stored _before_ any research starts, so the local model
+server's prompt-cache corruption (7 incidents so far, onset anywhere from 50 min to 42 h) can cost a
 research run, never an idea. A failed run is a red corner on a sticky note and a retry button, and
 intake and weekly refresh share **one code path**, since both are board-dispatched runs.
 
@@ -93,11 +94,11 @@ Hermes _can_ file directly for ad-hoc Slack asks like "add a question to the gro
 ### 2.4 Discussion — the idea's Slack thread, with Hermes
 
 Replies in an idea's thread go to the Hermes agent, as in any channel. Its `#ideas` channel prompt
-(live config on CT 121) tells it that a thread discusses the idea in its first message, and how to
+(in Hermes' config) tells it that a thread discusses the idea in its first message, and how to
 read that idea from the board: the plugin's reply carries the `?idea=<id>` link.
 
 It reads the board through the **board MCP server** (`/mcp`), registered in Hermes' `mcp_servers`
-the way kb-rag is: `get_idea` returns the idea with its current plan, questions, answers and
+like any other MCP server: `get_idea` returns the idea with its current plan, questions, answers and
 decisions. Two write tools, `answer_question` and `record_decision`, let it record what the author
 says in the thread. These are typed tool calls rather than `curl`, for the same reason capture is a
 plugin. The board stays the record: what is decided in the thread lands as an answer or a decision
@@ -106,7 +107,7 @@ record only what the author said in so many words, never its own suggestion.
 
 ## 3. Flows
 
-**Capture.** Slack `#ideas` → idea-capture plugin (CT 121) → `POST /api/ideas` → the note appears
+**Capture.** Slack `#ideas` → idea-capture plugin (Hermes) → `POST /api/ideas` → the note appears
 (`CAPTURED`) with a model-written title, and its link is posted in the thread → research is queued
 automatically when `RESEARCH_ON_CAPTURE` is on, otherwise from the note's button.
 
@@ -161,8 +162,8 @@ Built as `features/research` plus `src/worker.ts`, which calls one tick every
 `RESEARCH_POLL_INTERVAL_MS` (5 s) and never overlaps ticks.
 
 - **Serial: one run at a time.** A tick polls the running job if there is one; otherwise it starts
-  the oldest due job. CT 120 serves `--parallel 2` and has other consumers, so the queue doubles as
-  the rate limit.
+  the oldest due job. A local model server may have few parallel slots (`--parallel 2` on the one tested) and other
+  consumers, so the queue doubles as the rate limit.
 - Dispatch: `POST /v1/runs` with `Idempotency-Key: research-<job id>-<attempt>`, so a board restart
   mid-dispatch cannot start a duplicate run, while a retry is a new run.
 - **The board owns the deadline, because Hermes has none (§1).** Default 15 min
@@ -181,7 +182,7 @@ Built as `features/research` plus `src/worker.ts`, which calls one tick every
 - The scheduled pass runs on the first tick after each slot. Whether an idea is due is read from
   its jobs (none created since the slot), so it keeps no state of its own: a slot missed while the
   board was down is caught up when it starts, and a restart never queues one twice.
-- Backlog after an outage: jobs stay queued and drain when CT 121 is back.
+- Backlog after an outage: jobs stay queued and drain when Hermes is back.
 
 ## 6. Run contract
 
@@ -271,7 +272,7 @@ Hermes in an idea's Slack thread (§2.4). Read: `list_ideas`, and `get_idea`, wh
 idea, its current plan (Markdown, stack, sources, research notes), its questions with answers, its
 decisions and its latest research job. Write: `answer_question` (idea id, question number, answer)
 and `record_decision` (idea id, text), each replying with when the plan will be refreshed. Verified
-from CT 121 with Hermes' own client (`mcp` 2.0.0, protocol 2025-11-25).
+from Hermes with its own client (`mcp` 2.0.0, protocol 2025-11-25).
 
 Answers and decisions need no REST endpoints: the board uses GraphQL and agents use MCP. The REST
 surface stays capture-only until a caller needs more.
@@ -304,27 +305,25 @@ Built:
   tracking `deploy` (never `main`, which races the publish).
   `pull_policy: always`, healthcheck on `/healthz`, one named volume, host port 4200.
 - **No environment-specific values in this repo.** The compose file passes every endpoint through
-  from the stack's env vars with an empty default; the homelab's values are recorded in the Proxmox
-  repo's `docker-host/README.md`. Use full hostnames (`<host>.lan`) or IPs: on VM 300, Docker's
-  resolver returns `ENOTFOUND` for single-label names on a compose network, while `.lan` names
-  resolve (tested 2026-10-02), so the stack needs no `dns:` override.
+  from the stack's env vars with an empty default, and each deployment keeps its own values. Use
+  fully qualified hostnames or IPs: on a compose network Docker's embedded resolver can return
+  `ENOTFOUND` for single-label names (seen 2026-10-02), so the stack needs no `dns:` override.
 - **Stack env (Portainer):** `PUBLIC_URL`, `TITLE_MODEL_BASE_URL`, `HERMES_API_URL`,
-  `HERMES_API_KEY` (the value of CT 121's `API_SERVER_KEY`, which Hermes itself requires),
+  `HERMES_API_KEY` (the value of Hermes' `API_SERVER_KEY`, which Hermes itself requires),
   `HERMES_PROVIDER` (`openai-codex`, or empty for the gateway default), `RESEARCH_ON_CAPTURE` and
   `RESEARCH_CONTEXT`. All default to empty in the compose file.
-- **Backups:** the volume is the only copy of your ideas and answers. VM 300's weekly vzdump covers
-  it; also list it under Backups in the Proxmox repo's `docker-host/README.md`, which backs up
-  Docker volumes separately so a restore doesn't roll back the whole VM.
+- **Backups:** the volume is the only copy of your ideas and answers. Back up the host, and copy
+  the volume out separately too, so a restore doesn't roll back the whole host.
 
 ## 11. Limitations that remain
 
-| Limitation                                                                                      | Mitigation                                                                                                                                                                                                                          |
-| ----------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No per-run toolset control, and `memory`, `cronjob` and `skill_manage` are enabled for API runs | Prompt rule: use web, web_extract and file reads only. If runs start writing to Hermes's memory or creating crons, add a dedicated `planner` profile with a trimmed toolset (the retired coder profile is the precedent)            |
-| CT 120 prompt-cache corruption                                                                  | Board deadline, stop and retry (§5). Or set `HERMES_PROVIDER=openai-codex`: already paid for through ChatGPT, rows bill `included`, immune to CT 120. Note that `model` is inert for that provider (`~/.codex/config.toml` decides) |
-| ~65k context per run on the local model                                                         | Stateless runs with capped inputs (§6)                                                                                                                                                                                              |
-| Capture depends on a Hermes plugin hook (`pre_gateway_dispatch`)                                | The plugin is stdlib-only and imports nothing from Hermes; re-run `hermes plugins doctor idea-capture` after every Hermes upgrade. Without it, the board's add-idea form still works                                                |
-| Hermes's `/v1/runs` is not a documented stable contract                                         | Pin the Hermes version the board was tested against in its README, and re-run §1's probe after every Hermes upgrade                                                                                                                 |
+| Limitation                                                                                      | Mitigation                                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No per-run toolset control, and `memory`, `cronjob` and `skill_manage` are enabled for API runs | Prompt rule: use web, web_extract and file reads only. If runs start writing to Hermes's memory or creating crons, add a dedicated `planner` profile with a trimmed toolset (the retired coder profile is the precedent)                     |
+| Local model prompt-cache corruption                                                             | Board deadline, stop and retry (§5). Or set `HERMES_PROVIDER=openai-codex`: already paid for through ChatGPT, rows bill `included`, immune to the local model. Note that `model` is inert for that provider (`~/.codex/config.toml` decides) |
+| ~65k context per run on the local model                                                         | Stateless runs with capped inputs (§6)                                                                                                                                                                                                       |
+| Capture depends on a Hermes plugin hook (`pre_gateway_dispatch`)                                | The plugin is stdlib-only and imports nothing from Hermes; re-run `hermes plugins doctor idea-capture` after every Hermes upgrade. Without it, the board's add-idea form still works                                                         |
+| Hermes's `/v1/runs` is not a documented stable contract                                         | Pin the Hermes version the board was tested against in its README, and re-run §1's probe after every Hermes upgrade                                                                                                                          |
 
 ## 12. Build order
 
@@ -334,7 +333,7 @@ Built:
    judged on real ideas.
 3. ✅ **Answers, debounce and refresh, plus MCP tools to answer and record decisions.** Then the
    scheduled re-check, with per-idea muting.
-4. ✅ **Slack `#ideas` capture:** the idea-capture plugin on CT 121, live 2026-10-02.
+4. ✅ **Slack `#ideas` capture:** the idea-capture Hermes plugin, live 2026-10-02.
 5. Optional: the `planner` Hermes profile, if §11's toolset concern shows up in practice.
 
 ## 13. Open decisions
