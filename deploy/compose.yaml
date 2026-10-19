@@ -21,6 +21,10 @@ services:
     pull_policy: always
     container_name: project-planner
     restart: unless-stopped
+    # Opts out of Watchtower: the stack updates by polling `deploy`, and a second updater would
+    # pull `main` on its own schedule.
+    labels:
+      com.centurylinklabs.watchtower.enable: 'false'
     ports:
       - '${PROJECT_PLANNER_PORT:-4200}:4000'
     volumes:
@@ -30,7 +34,7 @@ services:
       DATABASE_URL: file:/data/app.db
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Everything environment-specific comes from the stack's env vars; nothing is defaulted here.
-      # Use full hostnames (host.lan, an IP): Docker's resolver may not resolve single-label names.
+      # Use fully qualified hostnames or IPs: Docker's resolver may not resolve single-label names.
       #
       # Base of the links the REST API returns. Empty: the Host header the caller used.
       PUBLIC_URL: ${PUBLIC_URL:-}

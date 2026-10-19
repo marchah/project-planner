@@ -122,8 +122,8 @@ describe('buildIntakePrompt', () => {
   });
 
   it('tells research not to ask what the author description already answers', () => {
-    const prompt = buildIntakePrompt(idea, T0, 'Homelab: an always-on Proxmox server.');
-    expect(prompt).toContain('ABOUT THE AUTHOR (use it to fit the plan to them):\nHomelab:');
+    const prompt = buildIntakePrompt(idea, T0, 'Solo developer: prefers free, self-hosted tools.');
+    expect(prompt).toContain('ABOUT THE AUTHOR (use it to fit the plan to them):\nSolo developer:');
     expect(prompt).toContain('Never ask what ABOUT THE AUTHOR already answers');
   });
 });
