@@ -271,7 +271,9 @@ the `Host` header the caller used. Errors are JSON: 400 (invalid body, with Zod 
 Hermes in an idea's Slack thread (§2.4) and for coding agents that build from the board. Read: `list_ideas`, and `get_idea`, which returns the
 idea, its current plan (Markdown, stack, sources, research notes), its questions with answers, its
 decisions and its latest research job. Write: `answer_question` (idea id, question number, answer)
-and `record_decision` (idea id, text), each replying with when the plan will be refreshed, and
+and `record_decision` (idea id, text: the author's decision, or a change an agent building the
+idea made to the plan, with its reason; answers stay the author's alone), each replying with when
+the plan will be refreshed, and
 `set_idea_status` (idea id, `PLANNED · BUILDING · DONE · SHELVED`; the research statuses stay the
 board's). Verified
 from Hermes with its own client (`mcp` 2.0.0, protocol 2025-11-25).
