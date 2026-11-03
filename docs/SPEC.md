@@ -268,10 +268,12 @@ the `Host` header the caller used. Errors are JSON: 400 (invalid body, with Zod 
 413 (body over 64 KiB). Source `WEB` is reserved for the board's own form.
 
 **MCP** (built): `/mcp` is a stateless MCP server over streamable HTTP with JSON replies, for
-Hermes in an idea's Slack thread (§2.4). Read: `list_ideas`, and `get_idea`, which returns the
+Hermes in an idea's Slack thread (§2.4) and for coding agents that build from the board. Read: `list_ideas`, and `get_idea`, which returns the
 idea, its current plan (Markdown, stack, sources, research notes), its questions with answers, its
 decisions and its latest research job. Write: `answer_question` (idea id, question number, answer)
-and `record_decision` (idea id, text), each replying with when the plan will be refreshed. Verified
+and `record_decision` (idea id, text), each replying with when the plan will be refreshed, and
+`set_idea_status` (idea id, `PLANNED · BUILDING · DONE · SHELVED`; the research statuses stay the
+board's). Verified
 from Hermes with its own client (`mcp` 2.0.0, protocol 2025-11-25).
 
 Answers and decisions need no REST endpoints: the board uses GraphQL and agents use MCP. The REST

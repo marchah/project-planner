@@ -44,10 +44,12 @@ curl http://localhost:4000/healthz
 
 ## MCP
 
-`/mcp` is a stateless MCP server (streamable HTTP) for an agent discussing an idea. It reads with
-`list_ideas` and `get_idea` (the idea, its current plan, questions and answers, decisions and
-research state), and writes back what the idea's author said with `answer_question` and
-`record_decision`, which schedule a plan refresh.
+`/mcp` is a stateless MCP server (streamable HTTP) for agents discussing an idea or building it.
+It reads with `list_ideas` and `get_idea` (the idea, its current plan, questions and answers,
+decisions and research state), writes back what the idea's author said with `answer_question` and
+`record_decision`, which schedule a plan refresh, and moves an idea with `set_idea_status`:
+`BUILDING` when an agent starts on it, `DONE` when it is built, `PLANNED` to hand it back. For
+example, `claude mcp add --transport http project-planner http://<board>/mcp/`.
 
 The title model names the idea from `text` unless `title` is given; if the model is unreachable the
 idea is still saved, with `"title": null`, and can be titled later from the board. `source` is

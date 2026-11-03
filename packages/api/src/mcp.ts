@@ -3,6 +3,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { logException } from './common/logger';
 import { settings } from './common/settings';
+import { registerIdeaTools } from './entities/idea/mcp';
 import { ideaUrl } from './entities/idea/routes';
 import { registerBriefTools } from './features/brief/mcp';
 import { registerResearchTools } from './features/research/mcp';
@@ -29,6 +30,7 @@ export async function handleMcpRequest(req: IncomingMessage, res: ServerResponse
   const services = getServices();
   registerBriefTools(server, services, (id) => ideaUrl(origin, id));
   registerResearchTools(server, services);
+  registerIdeaTools(server, services, (id) => ideaUrl(origin, id));
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
     enableJsonResponse: true,
