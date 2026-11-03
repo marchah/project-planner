@@ -71,6 +71,7 @@ status.
 | `HERMES_API_URL`          | unset                | Hermes Agent's API (`…:8642`), which runs research. Unset: research is off                                                          |
 | `HERMES_API_KEY`          | unset                | Hermes' `API_SERVER_KEY`                                                                                                            |
 | `HERMES_PROVIDER`         | unset                | Model provider for research runs, e.g. `openai-codex`; unset uses Hermes' default                                                   |
+| `HERMES_MODEL`            | unset                | Model for research runs on that provider, e.g. a Codex model. Set it with `HERMES_PROVIDER`: Hermes otherwise sends its own default |
 | `RESEARCH_ON_CAPTURE`     | `false`              | `true` researches new ideas automatically instead of waiting for the button                                                         |
 | `RESEARCH_CONTEXT`        | unset                | Free text about you, added to every research prompt                                                                                 |
 | `RESEARCH_RUN_TIMEOUT_MS` | `900000`             | A research run is stopped and retried after this long                                                                               |

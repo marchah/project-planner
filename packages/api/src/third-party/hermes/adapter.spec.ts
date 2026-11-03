@@ -6,6 +6,7 @@ const config = {
   HERMES_API_URL: 'http://hermes:8642',
   HERMES_API_KEY: 'key-1',
   HERMES_PROVIDER: 'openai-codex',
+  HERMES_MODEL: 'codex-model',
   HERMES_REQUEST_TIMEOUT_MS: 1000,
 };
 
@@ -37,7 +38,7 @@ describe('hermesAdapter', () => {
     ).toBe(false);
   });
 
-  it('starts a run with the key, the provider and an idempotency key', async () => {
+  it('starts a run with the key, the provider, the model and an idempotency key', async () => {
     const fetchMock = stub(202, { run_id: 'run_1', status: 'started' });
     const adapter = hermesAdapterFactory({ config });
     await expect(
@@ -49,13 +50,22 @@ describe('hermesAdapter', () => {
       authorization: 'Bearer key-1',
       'idempotency-key': 'job-1-1',
     });
-    expect(request.body).toEqual({ input: 'research', provider: 'openai-codex' });
+    expect(request.body).toEqual({
+      input: 'research',
+      provider: 'openai-codex',
+      model: 'codex-model',
+    });
   });
 
-  it('continues a session when asked, and sends no provider or key when none is set', async () => {
+  it('continues a session when asked, and sends no provider, model or key when none is set', async () => {
     const fetchMock = stub(202, { run_id: 'run_2' });
     const adapter = hermesAdapterFactory({
-      config: { ...config, HERMES_PROVIDER: undefined, HERMES_API_KEY: undefined },
+      config: {
+        ...config,
+        HERMES_PROVIDER: undefined,
+        HERMES_MODEL: undefined,
+        HERMES_API_KEY: undefined,
+      },
     });
     await adapter.startRun({ prompt: 'fix it', sessionId: 'sess-1', idempotencyKey: 'k' });
     const request = sent(fetchMock);

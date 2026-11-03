@@ -11,6 +11,7 @@ export interface HermesConfig {
   HERMES_API_URL: string | undefined;
   HERMES_API_KEY: string | undefined;
   HERMES_PROVIDER: string | undefined;
+  HERMES_MODEL: string | undefined;
   HERMES_REQUEST_TIMEOUT_MS: number;
 }
 
@@ -42,6 +43,8 @@ export function hermesAdapterFactory({ config }: { config: HermesConfig }): Rese
     const body = {
       input: prompt,
       ...(config.HERMES_PROVIDER && { provider: config.HERMES_PROVIDER }),
+      // Hermes passes the model to the provider, and its own default fits only its own provider.
+      ...(config.HERMES_MODEL && { model: config.HERMES_MODEL }),
       ...(sessionId && { session_id: sessionId }),
     };
     const response = await request('/v1/runs', {

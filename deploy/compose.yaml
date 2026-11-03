@@ -49,6 +49,8 @@ services:
       HERMES_API_KEY: ${HERMES_API_KEY:-}
       # Model provider for research runs, e.g. openai-codex. Empty: Hermes' default.
       HERMES_PROVIDER: ${HERMES_PROVIDER:-}
+      # The model on that provider. Empty: Hermes' default, which another provider may reject.
+      HERMES_MODEL: ${HERMES_MODEL:-}
       HERMES_REQUEST_TIMEOUT_MS: ${HERMES_REQUEST_TIMEOUT_MS:-}
       # 'true' researches every new idea automatically; otherwise use the button on the note.
       RESEARCH_ON_CAPTURE: ${RESEARCH_ON_CAPTURE:-false}
