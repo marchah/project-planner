@@ -51,6 +51,9 @@ const EnvSchema = z.object({
   HERMES_API_KEY: optional(z.string()),
   // Which model provider Hermes runs research on, e.g. `openai-codex`. Unset: Hermes' default.
   HERMES_PROVIDER: optional(z.string()),
+  // The model research runs on, sent with the provider: Hermes otherwise sends the provider its own
+  // default model, which another provider may reject. Unset: Hermes' default.
+  HERMES_MODEL: optional(z.string()),
   HERMES_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   // Research ideas that are still CAPTURED without being asked to.
   RESEARCH_ON_CAPTURE: z
@@ -108,6 +111,7 @@ export const settings = {
   HERMES_API_URL: ENV.HERMES_API_URL,
   HERMES_API_KEY: ENV.HERMES_API_KEY,
   HERMES_PROVIDER: ENV.HERMES_PROVIDER,
+  HERMES_MODEL: ENV.HERMES_MODEL,
   HERMES_REQUEST_TIMEOUT_MS: ENV.HERMES_REQUEST_TIMEOUT_MS,
   RESEARCH_ON_CAPTURE: ENV.RESEARCH_ON_CAPTURE,
   RESEARCH_RUN_TIMEOUT_MS: ENV.RESEARCH_RUN_TIMEOUT_MS,

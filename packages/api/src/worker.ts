@@ -24,7 +24,7 @@ export function startResearchWorker(): () => void {
   }, settings.RESEARCH_POLL_INTERVAL_MS);
   timer.unref();
   logInfo(
-    `research worker started: provider ${settings.HERMES_PROVIDER ?? "Hermes' default"}, research on capture ${settings.RESEARCH_ON_CAPTURE ? 'on' : 'off'}`,
+    `research worker started: provider ${settings.HERMES_PROVIDER ?? "Hermes' default"}, model ${settings.HERMES_MODEL ?? "Hermes' default"}, research on capture ${settings.RESEARCH_ON_CAPTURE ? 'on' : 'off'}`,
     { tag: 'RESEARCH' },
   );
   return () => clearInterval(timer);
